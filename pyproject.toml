@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sovereign-self-fixer"
+version = "0.2.0"
+requires-python = ">=3.10"
+
+dependencies = [
+    "cryptography",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "pytest"]
