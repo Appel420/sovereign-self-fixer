@@ -12,14 +12,30 @@ from typing import ClassVar
 class RuntimePolicy:
     """Resolve runtime mode and on-disk paths from the environment."""
 
-    _MODE_SETTINGS: ClassVar[dict[str, tuple[int, float, bool]]] = {
-        "ghost": (10, 5.0, False),
-        "hybrid": (20, 3.0, True),
-        "online": (50, 2.0, True),
+    _MODE_SETTINGS: ClassVar[dict[str, dict[str, int | float | bool]]] = {
+        "ghost": {
+            "backup_retention": 10,
+            "scan_interval": 5.0,
+            "has_replica_backup": False,
+        },
+        "hybrid": {
+            "backup_retention": 20,
+            "scan_interval": 3.0,
+            "has_replica_backup": True,
+        },
+        "online": {
+            "backup_retention": 50,
+            "scan_interval": 2.0,
+            "has_replica_backup": True,
+        },
     }
 
     mode: str
     base_dir: Path
+
+    def __post_init__(self) -> None:
+        if self.mode not in self._MODE_SETTINGS:
+            raise ValueError(f"invalid runtime mode: {self.mode}")
 
     @classmethod
     def from_env(cls) -> "RuntimePolicy":
@@ -62,14 +78,14 @@ class RuntimePolicy:
 
     @property
     def backup_retention(self) -> int:
-        return self._MODE_SETTINGS[self.mode][0]
+        return int(self._MODE_SETTINGS[self.mode]["backup_retention"])
 
     @property
     def scan_interval(self) -> float:
-        return self._MODE_SETTINGS[self.mode][1]
+        return float(self._MODE_SETTINGS[self.mode]["scan_interval"])
 
     @property
     def replica_backup_dir(self) -> Path | None:
-        if not self._MODE_SETTINGS[self.mode][2]:
+        if not bool(self._MODE_SETTINGS[self.mode]["has_replica_backup"]):
             return None
         return self.base_dir / "replicas" / self.mode

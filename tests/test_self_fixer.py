@@ -129,6 +129,8 @@ def test_runtime_policy_profiles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("SOVEREIGN_MODE", "ghost")
     ghost_policy = RuntimePolicy.from_env()
     assert ghost_policy.replica_backup_dir is None
+    assert ghost_policy.backup_retention == 10
+    assert ghost_policy.scan_interval == 5.0
 
     monkeypatch.setenv("SOVEREIGN_MODE", "online")
     online_policy = RuntimePolicy.from_env()

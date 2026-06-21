@@ -115,13 +115,15 @@ class SelfFixer:
         if latest_backup is not None:
             try:
                 restored = self._restore_backup(latest_backup)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(f"backup not found: {latest_backup}") from exc
             except Exception as exc:
-                raise FileNotFoundError(
-                    f"Failed to restore {self.target_path} from backup {latest_backup}: {exc}"
+                raise RuntimeError(
+                    f"backup restoration failed for {self.target_path} from {latest_backup}: {exc}"
                 ) from exc
             if not restored.exists():
-                raise FileNotFoundError(
-                    f"Failed to restore {self.target_path} from backup {latest_backup}"
+                raise RuntimeError(
+                    f"restore completed but target is missing: {self.target_path} from {latest_backup}"
                 )
             notes.append(f"restored {restored.name} from {latest_backup.name}")
             return notes, True, True
@@ -132,33 +134,39 @@ class SelfFixer:
         return notes, False, False
 
     def _latest_backup(self) -> Path | None:
-        primary_backup = (
-            self.backup_manager.latest_backup() if self.backup_manager is not None else None
-        )
-        replica = (
-            self.replica_backup_manager.latest_backup()
-            if self.replica_backup_manager is not None
-            else None
-        )
-        if primary_backup is None:
-            return replica
-        if replica is None:
-            return primary_backup
-
-        existing_backups = [backup for backup in (primary_backup, replica) if backup.exists()]
-        if not existing_backups:
+        backups_with_mtime: list[tuple[float, Path]] = []
+        for backup_manager in (self.backup_manager, self.replica_backup_manager):
+            snapshot = self._backup_snapshot(backup_manager)
+            if snapshot is not None:
+                backups_with_mtime.append(snapshot)
+        if not backups_with_mtime:
             return None
-        if len(existing_backups) == 1:
-            return existing_backups[0]
-        backups_with_mtime = [(backup.stat().st_mtime, backup) for backup in existing_backups]
         return max(backups_with_mtime, key=lambda item: item[0])[1]
 
     def _restore_backup(self, backup: Path) -> Path:
-        if self.backup_manager is not None and backup.resolve().parent == self.backup_manager.backup_dir.resolve():
+        if self._matches_backup_dir(backup, self.backup_manager):
             return self.backup_manager.restore_backup(backup, destination=self.target_path)
-        if (
-            self.replica_backup_manager is not None
-            and backup.resolve().parent == self.replica_backup_manager.backup_dir.resolve()
-        ):
+        if self._matches_backup_dir(backup, self.replica_backup_manager):
             return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
         raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
+
+    @staticmethod
+    def _backup_snapshot(backup_manager: BackupManager | None) -> tuple[float, Path] | None:
+        if backup_manager is None:
+            return None
+        backup = backup_manager.latest_backup()
+        if backup is None:
+            return None
+        try:
+            return backup.stat().st_mtime, backup
+        except FileNotFoundError:
+            return None
+
+    @staticmethod
+    def _matches_backup_dir(backup: Path, backup_manager: BackupManager | None) -> bool:
+        if backup_manager is None:
+            return False
+        try:
+            return backup.resolve().parent == backup_manager.backup_dir.resolve()
+        except FileNotFoundError:
+            return False
