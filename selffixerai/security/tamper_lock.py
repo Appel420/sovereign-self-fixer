@@ -106,21 +106,17 @@ class TamperHardLock:
         )
 
     def verify(self) -> bool:
-        snapshot = self.load_snapshot()
-        if snapshot is None:
+        if not self.state_file.exists():
             return False
-        payload = {
-            "code_hash": snapshot.code_hash,
-            "previous_hash": snapshot.previous_hash,
-            "timestamp": snapshot.timestamp,
-            "tpm": self.tpm.quote().digest,
-        }
+        raw = self.encryption.decrypt_bytes(self.state_file.read_bytes())
+        state_payload = json.loads(raw.decode("utf-8"))
+        payload = state_payload["payload"]
         payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
         try:
-            self._public_key.verify(base64.b64decode(snapshot.signature), payload_bytes)
+            self._public_key.verify(base64.b64decode(state_payload["signature"]), payload_bytes)
         except InvalidSignature:
             return False
-        return snapshot.code_hash == self.current_hash()
+        return str(payload["code_hash"]) == self.current_hash()
 
     def refresh(self) -> LockSnapshot:
         return self.seal()
