@@ -13,10 +13,7 @@ from selffixerai.security.tamper_lock import TamperHardLock
 from selffixerai.analysis.deep_scanner import DeepScanner
 from selffixerai.notifications import Notifier
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
 
 
@@ -27,7 +24,6 @@ async def main():
         lock = TamperHardLock(code_file="state.code")
         scanner = DeepScanner()
         notifier = Notifier()
-
         fixer = SelfFixer(lock=lock, scanner=scanner, notifier=notifier)
     except Exception as e:
         logger.exception(f"Failed to initialize components: {e}")
@@ -35,7 +31,6 @@ async def main():
 
     stop_event = asyncio.Event()
 
-    # Graceful shutdown
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
