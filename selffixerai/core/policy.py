@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import ClassVar
 from pathlib import Path
+from typing import ClassVar
 
 
 @dataclass(slots=True)

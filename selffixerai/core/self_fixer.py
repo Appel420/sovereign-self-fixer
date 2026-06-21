@@ -150,11 +150,15 @@ class SelfFixer:
             return None
         if len(existing_backups) == 1:
             return existing_backups[0]
-        return max(existing_backups, key=lambda backup: backup.stat().st_mtime)
+        backups_with_mtime = [(backup.stat().st_mtime, backup) for backup in existing_backups]
+        return max(backups_with_mtime, key=lambda item: item[0])[1]
 
     def _restore_backup(self, backup: Path) -> Path:
-        if self.backup_manager is not None and backup.parent == self.backup_manager.backup_dir:
+        if self.backup_manager is not None and backup.resolve().parent == self.backup_manager.backup_dir.resolve():
             return self.backup_manager.restore_backup(backup, destination=self.target_path)
-        if self.replica_backup_manager is not None and backup.parent == self.replica_backup_manager.backup_dir:
+        if (
+            self.replica_backup_manager is not None
+            and backup.resolve().parent == self.replica_backup_manager.backup_dir.resolve()
+        ):
             return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
         raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
