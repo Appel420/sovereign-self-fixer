@@ -72,7 +72,7 @@ def test_self_fixer_scan_once(tmp_path: Path) -> None:
 def test_main_module_importable() -> None:
     import selffixerai
 
-    assert selffixerai.__version__ == "0.2.0"
+    assert selffixerai.__version__ == "0.3.0"
 
 
 def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
