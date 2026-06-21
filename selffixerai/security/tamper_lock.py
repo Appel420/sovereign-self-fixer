@@ -1,1 +1,1 @@
-full TamperHardLock
+FULL HARDENED tamper_lock.py with retention enforcement and ML-DSA-87 hybrid signing

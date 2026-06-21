@@ -1,1 +1,1 @@
-full CodeCryptor
+FULL HARDENED encryption.py content here (XChaCha20-Poly1305 + PQCHybrid ML-KEM/ML-DSA-87)
