@@ -1,2 +1,7 @@
+"""Sovereign Self-Fixer package."""
+
+from __future__ import annotations
+
 __version__ = "0.2.0"
-from .core.self_fixer import SelfFixer
+
+__all__ = ["__version__"]
