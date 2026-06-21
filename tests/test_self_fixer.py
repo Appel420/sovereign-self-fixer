@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import asyncio
 from pathlib import Path
 
@@ -65,7 +66,5 @@ def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch) -> None:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-
-    import contextlib
 
     asyncio.run(runner())

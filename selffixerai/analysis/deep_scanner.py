@@ -39,7 +39,7 @@ class _IssueVisitor(ast.NodeVisitor):
                 Finding(self.path, node.lineno, node.col_offset, "high", f"Unsafe call to {name}")
             )
         if name in {"os.system", "subprocess.call", "subprocess.run", "subprocess.Popen"}:
-            if any(keyword.arg == "shell" and isinstance(keyword.value, ast.Constant) and keyword.value.value for keyword in node.keywords):
+            if any(self._shell_is_true(keyword) for keyword in node.keywords):
                 self.findings.append(
                     Finding(self.path, node.lineno, node.col_offset, "high", "shell=True subprocess call")
                 )
@@ -53,6 +53,14 @@ class _IssueVisitor(ast.NodeVisitor):
             parent = _IssueVisitor._call_name(node.value)
             return f"{parent}.{node.attr}" if parent else node.attr
         return ""
+
+    @staticmethod
+    def _shell_is_true(keyword: ast.keyword) -> bool:
+        return (
+            keyword.arg == "shell"
+            and isinstance(keyword.value, ast.Constant)
+            and bool(keyword.value.value)
+        )
 
 
 class DeepScanner:
