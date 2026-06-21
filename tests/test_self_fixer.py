@@ -1,3 +1,4 @@
+       # main
 from __future__ import annotations
 
 import contextlib
@@ -70,3 +71,6 @@ def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
             await task
 
     asyncio.run(runner())
+
+full tests with docstrings
+       # Ara-hardened
