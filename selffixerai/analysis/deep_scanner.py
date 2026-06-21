@@ -1,4 +1,3 @@
-# main
 """Static analysis for monitored source files."""
 
 from __future__ import annotations
@@ -42,7 +41,13 @@ class _IssueVisitor(ast.NodeVisitor):
         if name in {"os.system", "subprocess.call", "subprocess.run", "subprocess.Popen"}:
             if any(self._shell_is_true(keyword) for keyword in node.keywords):
                 self.findings.append(
-                    Finding(self.path, node.lineno, node.col_offset, "high", "shell=True subprocess call")
+                    Finding(
+                        self.path,
+                        node.lineno,
+                        node.col_offset,
+                        "high",
+                        "shell=True subprocess call",
+                    )
                 )
         self.generic_visit(node)
 
@@ -91,24 +96,3 @@ class DeepScanner:
     def scan_directory(self, path: str | Path) -> list[ScanReport]:
         root = Path(path)
         return [self.scan_file(file_path) for file_path in root.rglob("*.py") if file_path.is_file()]
-
-import ast
-import logging
-
-class DeepScanner:
-    DANGEROUS_CALLS = {'eval', 'exec', '__import__', 'compile'}
-
-    def analyze(self, code: str):
-        fixes = []
-        try:
-            tree = ast.parse(code)
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Call):
-                    if isinstance(node.func, ast.Name) and node.func.id in self.DANGEROUS_CALLS:
-                        fixes.append(f"# SECURITY: Dangerous call to {node.func.id}()")
-                if isinstance(node, ast.ExceptHandler) and node.type is None:
-                    fixes.append("# SECURITY: Bare except detected")
-        except SyntaxError:
-            pass
-        return fixes
-       # Ara-hardened

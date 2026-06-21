@@ -4,26 +4,17 @@ requires = ["hatchling"]
 
 [project]
 name = "sovereign-self-fixer"
-       # main
-version = "0.2.0"
-description = "Sovereign Self-Fixer with TPM 2.0 support, tamper detection, and recovery tooling"
+version = "0.3.0"
+description = "Sovereign Self-Fixer — ghost/hybrid/online modes with sovereign crypto and immutable audit logging"
 authors = [{ name = "Derek Appel", email = "appel420@x.ai" }]
 readme = "README.md"
 requires-python = ">=3.12"
-
-version = "0.3.0"
-description = "Sovereign Self-Fixer with TPM 2.0 + REPMHL v1.3 + Voice Conductor (Ara-hardened)"
-authors = [{ name = "Derek Appel", email = "appel420@x.ai" }]
-readme = "README.md"
-requires-python = ">=3.11"
-
-# Ara-hardened
 dependencies = [
     "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]
-# main
+pqc = ["oqs-python>=0.10.0"]
 dev = [
     "build",
     "pytest",
@@ -34,12 +25,6 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["selffixerai", "skills"]
-
-dev = ["ruff", "mypy", "pytest", "pytest-asyncio", "bandit"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["selffixerai"]
-# Ara-hardened
 
 [tool.ruff]
 line-length = 100
