@@ -1,1 +1,34 @@
-full pyproject.toml
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+name = "sovereign-self-fixer"
+version = "0.3.0"
+description = "Sovereign Self-Fixer with TPM 2.0 + REPMHL v1.3 + Voice Conductor (Ara-hardened)"
+authors = [{ name = "Derek Appel", email = "appel420@x.ai" }]
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "cryptography>=42.0.0",
+    "blake3>=0.4.0",
+    "prometheus-client>=0.20.0",
+    "sentence-transformers>=3.0.0",
+    "faiss-cpu>=1.8.0",
+    "numpy>=1.26.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "pytest", "pytest-asyncio", "bandit"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["selffixerai"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
