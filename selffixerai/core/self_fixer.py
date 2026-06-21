@@ -65,7 +65,11 @@ class SelfFixer:
             if not should_scan:
                 scanned = False
 
-        scan = self.scanner.scan_file(self.target_path) if scanned else ScanReport(path=str(self.target_path))
+        scan = (
+            self.scanner.scan_file(self.target_path)
+            if scanned
+            else ScanReport(path=str(self.target_path), findings=[])
+        )
 
         if scanned and not scan.has_findings:
             if self.backup_manager is not None:
@@ -113,7 +117,7 @@ class SelfFixer:
         latest_backup = self._latest_backup()
         if latest_backup is not None:
             restored = self._restore_backup(latest_backup)
-            if restored != self.target_path or not restored.exists():
+            if not restored.exists():
                 raise FileNotFoundError(self.target_path)
             notes.append(f"restored {restored.name} from {latest_backup.name}")
             return notes, True

@@ -123,6 +123,21 @@ def test_runtime_policy_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert not policy.is_online
 
 
+def test_runtime_policy_profiles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SOVEREIGN_BASE_DIR", str(tmp_path / "runtime"))
+
+    monkeypatch.setenv("SOVEREIGN_MODE", "ghost")
+    ghost_policy = RuntimePolicy.from_env()
+    assert ghost_policy.replica_backup_dir is None
+
+    monkeypatch.setenv("SOVEREIGN_MODE", "online")
+    online_policy = RuntimePolicy.from_env()
+    assert online_policy.replica_backup_dir == tmp_path / "runtime" / "replicas" / "online"
+    assert online_policy.is_online
+    assert not online_policy.is_ghost
+    assert not online_policy.is_hybrid
+
+
 def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
