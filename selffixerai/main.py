@@ -12,8 +12,13 @@ from selffixerai.core.self_fixer import SelfFixer
 from selffixerai.security.tamper_lock import TamperHardLock
 from selffixerai.analysis.deep_scanner import DeepScanner
 from selffixerai.notifications import Notifier
+from selffixerai.memory.repmhl import REPMHL
+from skills.voice_conductor.voice_conductor import voice_conductor
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
+)
 logger = logging.getLogger("main")
 
 
@@ -24,7 +29,12 @@ async def main():
         lock = TamperHardLock(code_file="state.code")
         scanner = DeepScanner()
         notifier = Notifier()
+
         fixer = SelfFixer(lock=lock, scanner=scanner, notifier=notifier)
+
+        repmhl = REPMHL()
+        await voice_conductor.initialize()
+
     except Exception as e:
         logger.exception(f"Failed to initialize components: {e}")
         return
@@ -36,11 +46,13 @@ async def main():
         loop.add_signal_handler(sig, stop_event.set)
 
     try:
+        repmhl.start_session()
         await fixer.run(stop_event)
     except Exception as e:
         logger.exception(f"Error in main loop: {e}")
         stop_event.set()
     finally:
+        repmhl.shutdown()
         logger.info("Shutdown complete.")
 
 
