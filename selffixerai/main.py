@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from selffixerai.analysis.deep_scanner import DeepScanner
+from selffixerai.core.backup_manager import BackupManager
 from selffixerai.core.self_fixer import SelfFixer
 from selffixerai.memory.repmhl import REPMHL
 from selffixerai.notifications import Notifier
@@ -29,16 +30,19 @@ async def main() -> None:
     target_file = Path(__file__).resolve()
     memory_path = Path.home() / ".local" / "share" / "sovereign-self-fixer" / "memory.json"
     state_path = Path.home() / ".local" / "share" / "sovereign-self-fixer" / "state.json.enc"
+    backup_dir = Path.home() / ".local" / "share" / "sovereign-self-fixer" / "backups"
 
     lock = TamperHardLock(code_file=target_file, state_file=state_path)
     scanner = DeepScanner()
     notifier = Notifier()
     repmhl = REPMHL(storage_path=memory_path)
+    backup_manager = BackupManager(backup_dir=backup_dir, retention=10)
     fixer = SelfFixer(
         lock=lock,
         scanner=scanner,
         notifier=notifier,
         memory=repmhl,
+        backup_manager=backup_manager,
         target_path=target_file,
     )
 

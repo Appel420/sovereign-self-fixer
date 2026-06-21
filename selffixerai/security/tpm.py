@@ -79,7 +79,7 @@ class TPMManager:
         manager = EncryptionManager(key_material=material)
         return manager.decrypt_bytes(blob, associated_data=label.encode("utf-8"))
 
-def _seal_material(self, label: str) -> bytes:
-    pcrs = json.dumps(self.read_pcrs(), sort_keys=True).encode("utf-8")
-    machine = os.environ.get("HOSTNAME", "").encode("utf-8")
-    return sha256(pcrs + machine + label.encode("utf-8")).digest()
+   def _seal_material(self, label: str) -> bytes:
+       pcrs = json.dumps(self.read_pcrs(), sort_keys=True).encode("utf-8")
+       machine = os.environ.get("HOSTNAME", "").encode("utf-8")
+       return sha256(pcrs + machine + label.encode("utf-8")).digest()

@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from selffixerai.analysis.deep_scanner import DeepScanner, Finding, ScanReport
+from selffixerai.core.backup_manager import BackupManager
 from selffixerai.memory.repmhl import REPMHL
 from selffixerai.notifications import Notifier
 from selffixerai.security.tamper_lock import TamperHardLock
@@ -30,6 +31,7 @@ class SelfFixer:
         scanner: DeepScanner,
         notifier: Notifier,
         memory: REPMHL | None = None,
+        backup_manager: BackupManager | None = None,
         target_path: str | Path | None = None,
         scan_interval: float = 5.0,
     ) -> None:
@@ -37,6 +39,7 @@ class SelfFixer:
         self.scanner = scanner
         self.notifier = notifier
         self.memory = memory
+        self.backup_manager = backup_manager
         self.target_path = Path(target_path) if target_path else self.lock.code_file
         self.scan_interval = scan_interval
 
@@ -59,6 +62,9 @@ class SelfFixer:
         notes: list[str] = []
 
         if not scan.has_findings:
+            if self.backup_manager is not None:
+                backup_path = self.backup_manager.create_backup(self.target_path)
+                notes.append(f"backup {backup_path.name}")
             snapshot = self.lock.refresh()
             notes.append(f"sealed {snapshot.code_hash}")
         else:

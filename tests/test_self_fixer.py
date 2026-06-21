@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from selffixerai.analysis.deep_scanner import DeepScanner
+from selffixerai.core.backup_manager import BackupManager
 from selffixerai.core.self_fixer import SelfFixer
 from selffixerai.memory.repmhl import REPMHL
 from selffixerai.notifications import Notifier
@@ -38,15 +39,34 @@ def test_memory_retrieval(tmp_path: Path) -> None:
     assert (tmp_path / "memory.json").exists()
 
 
+def test_backup_manager_round_trip(tmp_path: Path) -> None:
+    source = tmp_path / "source.py"
+    source.write_text("print('backup')\n", encoding="utf-8")
+    backup_manager = BackupManager(backup_dir=tmp_path / "backups", encryption=EncryptionManager(key_path=tmp_path / "key.bin"))
+
+    backup_path = backup_manager.create_backup(source)
+    restored = backup_manager.restore_backup(backup_path, destination=tmp_path / "restored.py")
+
+    assert restored.read_text(encoding="utf-8") == "print('backup')\n"
+
+
 def test_self_fixer_scan_once(tmp_path: Path) -> None:
     target = tmp_path / "target.py"
     target.write_text("print('ok')\n", encoding="utf-8")
     lock = TamperHardLock(code_file=target, state_file=tmp_path / "state.enc", key_file=tmp_path / "lock.key")
-    fixer = SelfFixer(lock=lock, scanner=DeepScanner(), notifier=Notifier(), memory=REPMHL(), target_path=target)
+    fixer = SelfFixer(
+        lock=lock,
+        scanner=DeepScanner(),
+        notifier=Notifier(),
+        memory=REPMHL(),
+        backup_manager=BackupManager(backup_dir=tmp_path / "backups", encryption=EncryptionManager(key_path=tmp_path / "backup.key")),
+        target_path=target,
+    )
     report = fixer.scan_once()
     assert report.scanned
     assert report.changed is False
     assert lock.verify()
+    assert any(note.startswith("backup ") for note in report.notes)
 
 
 def test_main_module_importable() -> None:
