@@ -65,13 +65,10 @@ class SelfFixer:
             if not should_scan:
                 scanned = False
 
-        scan = (
-            self.scanner.scan_file(self.target_path)
-            if scanned
-            else ScanReport(path=str(self.target_path), findings=[])
-        )
+        scan: ScanReport | None = self.scanner.scan_file(self.target_path) if scanned else None
+        findings = scan.findings if scan is not None else []
 
-        if scanned and not scan.has_findings:
+        if scan is not None and not scan.has_findings:
             if self.backup_manager is not None:
                 backup_path = self.backup_manager.create_backup(self.target_path)
                 notes.append(f"backup {backup_path.name}")
@@ -80,26 +77,26 @@ class SelfFixer:
                 notes.append(f"replica {replica_path.name}")
             snapshot = self.lock.refresh()
             notes.append(f"sealed {snapshot.code_hash}")
-        elif scan.has_findings:
+        elif scan is not None:
             notes.extend(self._describe_findings(scan))
 
         self.notifier.send_notification(
             "scan_complete",
-            {"path": str(self.target_path), "findings": len(scan.findings), "changed": changed},
+            {"path": str(self.target_path), "findings": len(findings), "changed": changed},
         )
 
         if self.memory is not None:
             self.memory.add_turn(
                 "assistant",
-                f"scan_complete path={self.target_path} findings={len(scan.findings)} changed={changed}",
-                metadata={"findings": [asdict(finding) for finding in scan.findings]},
+                f"scan_complete path={self.target_path} findings={len(findings)} changed={changed}",
+                metadata={"findings": [asdict(finding) for finding in findings]},
             )
 
         return RepairReport(
             path=str(self.target_path),
             scanned=scanned,
             changed=changed,
-            findings=scan.findings,
+            findings=findings,
             notes=notes,
         )
 
@@ -135,17 +132,25 @@ class SelfFixer:
         return notes, False, False
 
     def _latest_backup(self) -> Path | None:
-        primary = self.backup_manager.latest_backup() if self.backup_manager is not None else None
+        primary_backup = (
+            self.backup_manager.latest_backup() if self.backup_manager is not None else None
+        )
         replica = (
             self.replica_backup_manager.latest_backup()
             if self.replica_backup_manager is not None
             else None
         )
-        if primary is None:
+        if primary_backup is None:
             return replica
         if replica is None:
-            return primary
-        return max((primary, replica), key=self._backup_mtime)
+            return primary_backup
+
+        existing_backups = [backup for backup in (primary_backup, replica) if backup.exists()]
+        if not existing_backups:
+            return None
+        if len(existing_backups) == 1:
+            return existing_backups[0]
+        return max(existing_backups, key=lambda backup: backup.stat().st_mtime)
 
     def _restore_backup(self, backup: Path) -> Path:
         if self.backup_manager is not None and backup.parent == self.backup_manager.backup_dir:
@@ -153,10 +158,3 @@ class SelfFixer:
         if self.replica_backup_manager is not None and backup.parent == self.replica_backup_manager.backup_dir:
             return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
         raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
-
-    @staticmethod
-    def _backup_mtime(path: Path) -> float:
-        try:
-            return path.stat().st_mtime
-        except FileNotFoundError:
-            return float("-inf")
