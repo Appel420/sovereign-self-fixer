@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import shutil
-from typing import Optional, Dict, Any
+from typing import Optional
 
 class TPMManager:
     def __init__(self):
@@ -38,7 +38,7 @@ class TPMManager:
         except Exception:
             return False
 
-    async def read_hash_chain_from_nv(self) -> Optional[str]:
+    async def read_hash_chain_from_nv(self):
         if not await self.is_tpm_present():
             return None
         try:
@@ -51,21 +51,3 @@ class TPMManager:
             return stdout.decode().strip() if proc.returncode == 0 else None
         except Exception:
             return None
-
-    async def get_current_pcrs(self) -> dict:
-        if not await self.is_tpm_present():
-            return {}
-        # Implementation would go here
-        return {}
-
-    async def validate_platform_state(self) -> dict:
-        if not await self.is_tpm_present():
-            return {"valid": False, "reason": "TPM not present"}
-        return {"valid": True, "reason": "OK"}
-
-    async def seal_with_pcr_policy(self, data: bytes, password: Optional[str] = None) -> Optional[bytes]:
-        # Real implementation using tpm2-tools
-        return None
-
-    async def unseal_with_pcr_policy(self, sealed_blob: bytes, password: Optional[str] = None) -> Optional[bytes]:
-        return None

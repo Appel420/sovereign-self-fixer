@@ -5,11 +5,35 @@ build-backend = "hatchling.build"
 [project]
 name = "sovereign-self-fixer"
 version = "0.2.0"
-requires-python = ">=3.10"
-
+description = "Sovereign Self-Fixer with TPM 2.0 + Secure Enclave + Multi-Agent Runtime (Ara-hardened)"
+authors = [{ name = "Derek Appel", email = "appel420@x.ai" }]
+readme = "README.md"
+requires-python = ">=3.11"
 dependencies = [
-    "cryptography",
+    "cryptography>=42.0.0",
+    "blake3>=0.4.0",
+    "prometheus-client>=0.20.0",
+    "sentence-transformers>=3.0.0",
+    "faiss-cpu>=1.8.0",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest"]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "bandit",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["selffixerai", "enclave", "agents"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true

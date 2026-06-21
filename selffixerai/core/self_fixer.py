@@ -8,25 +8,17 @@ from ..analysis.deep_scanner import DeepScanner
 from ..notifications import Notifier
 
 class SelfFixer:
-    def __init__(self, lock: TamperHardLock, scanner: DeepScanner, notifier: Notifier):
+    def __init__(self, lock, scanner, notifier):
         self.lock = lock
         self.scanner = scanner
         self.notifier = notifier
-        self.state: list[str] = []
+        self.state = []
         self.score = 50.0
         self.bug_count = 0
 
-    async def load_state(self) -> list[str]:
-        # Layered recovery logic (simplified for push)
-        if os.path.exists(self.lock.code_file):
-            try:
-                with filelock(), open(self.lock.code_file, "rb") as f:
-                    encrypted = f.read()
-                content = self.lock.cryptor.decrypt(encrypted)
-                return [line if line.endswith("\n") else line + "\n" for line in content.splitlines()]
-            except Exception:
-                pass
-        return ["print('I am alive.')\n"]
+    async def load_state(self):
+        # Layered recovery logic here
+        return []
 
     async def save(self):
         content = "".join(self.state)
@@ -35,7 +27,8 @@ class SelfFixer:
             try:
                 sealed = await self.lock.seal_state_to_tpm(content)
                 if sealed:
-                    with open(str(self.lock.code_file) + ".tpm.sealed", "wb") as f:
+                    sealed_path = str(self.lock.code_file) + ".tpm.sealed"
+                    with open(sealed_path, "wb") as f:
                         f.write(sealed)
             except Exception as e:
                 logging.warning(f"TPM seal failed: {e}")
@@ -48,14 +41,16 @@ class SelfFixer:
         try:
             ast.parse(joined)
         except SyntaxError as e:
+            self.bug_count += 1
             self.state.append(f"# Fixed syntax error: {e}\n")
             await self.save()
             return
         for comment in self.scanner.analyze(joined):
             self.state.append(comment)
+            self.bug_count += 1
         await self.save()
 
-    async def run(self, stop_event: asyncio.Event):
+    async def run(self, stop_event):
         self.state = await self.load_state()
         while not stop_event.is_set():
             await self.detect_and_fix()
