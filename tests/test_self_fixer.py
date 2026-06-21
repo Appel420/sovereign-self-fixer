@@ -8,6 +8,7 @@ import pytest
 
 from selffixerai.analysis.deep_scanner import DeepScanner
 from selffixerai.core.backup_manager import BackupManager
+from selffixerai.core.policy import RuntimePolicy
 from selffixerai.core.self_fixer import SelfFixer
 from selffixerai.memory.repmhl import REPMHL
 from selffixerai.notifications import Notifier
@@ -73,6 +74,19 @@ def test_main_module_importable() -> None:
     import selffixerai
 
     assert selffixerai.__version__ == "0.3.0"
+
+
+def test_runtime_policy_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SOVEREIGN_MODE", "hybrid")
+    monkeypatch.setenv("SOVEREIGN_BASE_DIR", str(tmp_path / "runtime"))
+
+    policy = RuntimePolicy.from_env()
+
+    assert policy.mode == "hybrid"
+    assert policy.base_dir == tmp_path / "runtime"
+    assert policy.memory_path == tmp_path / "runtime" / "memory.json"
+    assert policy.state_path == tmp_path / "runtime" / "state.json.enc"
+    assert policy.backup_dir == tmp_path / "runtime" / "backups"
 
 
 def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
