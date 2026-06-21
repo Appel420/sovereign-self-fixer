@@ -113,7 +113,7 @@ class SelfFixer:
         latest_backup = self._latest_backup()
         if latest_backup is not None:
             restored = self._restore_backup(latest_backup)
-            if not self.target_path.exists():
+            if restored != self.target_path or not restored.exists():
                 raise FileNotFoundError(self.target_path)
             notes.append(f"restored {restored.name} from {latest_backup.name}")
             return notes, True
@@ -134,7 +134,7 @@ class SelfFixer:
             return replica
         if replica is None:
             return primary
-        return max((primary, replica), key=lambda path: path.stat().st_mtime)
+        return max((primary, replica), key=self._backup_mtime)
 
     def _restore_backup(self, backup: Path) -> Path:
         if self.backup_manager is not None and backup.is_relative_to(self.backup_manager.backup_dir):
@@ -144,3 +144,10 @@ class SelfFixer:
         ):
             return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
         raise FileNotFoundError(backup)
+
+    @staticmethod
+    def _backup_mtime(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except FileNotFoundError:
+            return float("-inf")
