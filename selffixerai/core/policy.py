@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import ClassVar
 from pathlib import Path
 
 
 @dataclass(slots=True)
 class RuntimePolicy:
     """Resolve runtime mode and on-disk paths from the environment."""
+
+    _MODE_SETTINGS: ClassVar[dict[str, tuple[int, float, bool]]] = {
+        "ghost": (10, 5.0, False),
+        "hybrid": (20, 3.0, True),
+        "online": (50, 2.0, True),
+    }
 
     mode: str
     base_dir: Path
@@ -55,14 +62,14 @@ class RuntimePolicy:
 
     @property
     def backup_retention(self) -> int:
-        return {"ghost": 10, "hybrid": 20, "online": 50}[self.mode]
+        return self._MODE_SETTINGS[self.mode][0]
 
     @property
     def scan_interval(self) -> float:
-        return {"ghost": 5.0, "hybrid": 3.0, "online": 2.0}[self.mode]
+        return self._MODE_SETTINGS[self.mode][1]
 
     @property
     def replica_backup_dir(self) -> Path | None:
-        if self.is_ghost:
+        if not self._MODE_SETTINGS[self.mode][2]:
             return None
         return self.base_dir / "replicas" / self.mode

@@ -59,9 +59,9 @@ class SelfFixer:
         scanned = True
 
         if not self.target_path.exists():
-            restored_notes, should_scan = self._restore_missing_target()
+            restored_notes, actual_change, should_scan = self._restore_missing_target()
             notes.extend(restored_notes)
-            changed = True
+            changed = actual_change
             if not should_scan:
                 scanned = False
 
@@ -112,7 +112,7 @@ class SelfFixer:
     def heal_text(self, text: str) -> str:
         return text if text.endswith("\n") else f"{text}\n"
 
-    def _restore_missing_target(self) -> tuple[list[str], bool]:
+    def _restore_missing_target(self) -> tuple[list[str], bool, bool]:
         notes: list[str] = []
         latest_backup = self._latest_backup()
         if latest_backup is not None:
@@ -120,19 +120,19 @@ class SelfFixer:
                 restored = self._restore_backup(latest_backup)
             except Exception as exc:
                 raise FileNotFoundError(
-                    f"restore failed from {latest_backup} to {self.target_path}: {exc}"
+                    f"Failed to restore {self.target_path} from backup {latest_backup}: {exc}"
                 ) from exc
             if not restored.exists():
                 raise FileNotFoundError(
-                    f"restore failed: {latest_backup} -> {self.target_path}"
+                    f"Failed to restore {self.target_path} from backup {latest_backup}"
                 )
             notes.append(f"restored {restored.name} from {latest_backup.name}")
-            return notes, True
+            return notes, True, True
 
         self.target_path.parent.mkdir(parents=True, exist_ok=True)
         self.target_path.write_text("", encoding="utf-8")
         notes.append(f"initialized {self.target_path.name} (no backups available)")
-        return notes, False
+        return notes, False, False
 
     def _latest_backup(self) -> Path | None:
         primary = self.backup_manager.latest_backup() if self.backup_manager is not None else None
@@ -148,11 +148,9 @@ class SelfFixer:
         return max((primary, replica), key=self._backup_mtime)
 
     def _restore_backup(self, backup: Path) -> Path:
-        if self.backup_manager is not None and backup.is_relative_to(self.backup_manager.backup_dir):
+        if self.backup_manager is not None and backup.parent == self.backup_manager.backup_dir:
             return self.backup_manager.restore_backup(backup, destination=self.target_path)
-        if self.replica_backup_manager is not None and backup.is_relative_to(
-            self.replica_backup_manager.backup_dir
-        ):
+        if self.replica_backup_manager is not None and backup.parent == self.replica_backup_manager.backup_dir:
             return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
         raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
 
