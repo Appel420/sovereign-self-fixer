@@ -116,7 +116,12 @@ class SelfFixer:
         notes: list[str] = []
         latest_backup = self._latest_backup()
         if latest_backup is not None:
-            restored = self._restore_backup(latest_backup)
+            try:
+                restored = self._restore_backup(latest_backup)
+            except Exception as exc:
+                raise FileNotFoundError(
+                    f"restore failed from {latest_backup} to {self.target_path}: {exc}"
+                ) from exc
             if not restored.exists():
                 raise FileNotFoundError(
                     f"restore failed: {latest_backup} -> {self.target_path}"
@@ -149,7 +154,7 @@ class SelfFixer:
             self.replica_backup_manager.backup_dir
         ):
             return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
-        raise FileNotFoundError(backup)
+        raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
 
     @staticmethod
     def _backup_mtime(path: Path) -> float:
