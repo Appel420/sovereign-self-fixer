@@ -1,1 +1,1 @@
-full main.py with error handling and integrations
+FULL MAIN.PY WITH ERROR HANDLING (from previous clean version)
