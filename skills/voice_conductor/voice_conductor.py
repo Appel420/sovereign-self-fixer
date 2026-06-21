@@ -1,1 +1,1 @@
-The full cleaned VoiceConductor code
+The full VoiceConductor code from previous response
