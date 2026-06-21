@@ -1,4 +1,3 @@
-       # main
 name: CI
 
 on:
@@ -50,6 +49,3 @@ jobs:
 
       - name: Build sdist and wheel
         run: python -m build
-
-full CI workflow
-        Ara-hardened
