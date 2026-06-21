@@ -14,6 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pqc = ["oqs-python>=0.10.0"]
 dev = [
     "build",
     "pytest",

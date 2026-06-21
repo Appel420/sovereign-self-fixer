@@ -8,6 +8,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
 class Notifier:
     """Dispatch structured notifications to the application log and listeners."""
 

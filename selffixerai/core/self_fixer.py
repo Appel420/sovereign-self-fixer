@@ -145,10 +145,20 @@ class SelfFixer:
 
     def _restore_backup(self, backup: Path) -> Path:
         if self._matches_backup_dir(backup, self.backup_manager):
-            return self.backup_manager.restore_backup(backup, destination=self.target_path)
+            return self._restore_with_manager(self.backup_manager, backup)
         if self._matches_backup_dir(backup, self.replica_backup_manager):
-            return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
+            return self._restore_with_manager(self.replica_backup_manager, backup)
         raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
+
+    def _restore_with_manager(self, manager: BackupManager | None, backup: Path) -> Path:
+        if manager is None:
+            raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
+        restored = manager.restore_backup(backup, destination=self.target_path)
+        if isinstance(restored, Path):
+            return restored
+        self.target_path.parent.mkdir(parents=True, exist_ok=True)
+        self.target_path.write_bytes(restored)
+        return self.target_path
 
     @staticmethod
     def _backup_snapshot(backup_manager: BackupManager | None) -> tuple[float, Path] | None:

@@ -41,7 +41,13 @@ class _IssueVisitor(ast.NodeVisitor):
         if name in {"os.system", "subprocess.call", "subprocess.run", "subprocess.Popen"}:
             if any(self._shell_is_true(keyword) for keyword in node.keywords):
                 self.findings.append(
-                    Finding(self.path, node.lineno, node.col_offset, "high", "shell=True subprocess call")
+                    Finding(
+                        self.path,
+                        node.lineno,
+                        node.col_offset,
+                        "high",
+                        "shell=True subprocess call",
+                    )
                 )
         self.generic_visit(node)
 

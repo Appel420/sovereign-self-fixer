@@ -8,6 +8,8 @@ from .repmhl import REPMHL
 
 
 class RAGPipeline:
+    """Augment prompts with relevant memory retrieved from REPMHL."""
+
     def __init__(self, repmhl: Optional[REPMHL] = None):
         self.repmhl = repmhl or REPMHL()
 
