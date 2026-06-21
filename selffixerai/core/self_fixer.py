@@ -56,14 +56,18 @@ class SelfFixer:
     def scan_once(self) -> RepairReport:
         changed = False
         notes: list[str] = []
+        scanned = True
 
         if not self.target_path.exists():
-            notes.extend(self._restore_missing_target())
+            restored_notes, should_scan = self._restore_missing_target()
+            notes.extend(restored_notes)
             changed = True
+            if not should_scan:
+                scanned = False
 
-        scan = self.scanner.scan_file(self.target_path)
+        scan = self.scanner.scan_file(self.target_path) if scanned else ScanReport(path=str(self.target_path))
 
-        if not scan.has_findings:
+        if scanned and not scan.has_findings:
             if self.backup_manager is not None:
                 backup_path = self.backup_manager.create_backup(self.target_path)
                 notes.append(f"backup {backup_path.name}")
@@ -72,7 +76,7 @@ class SelfFixer:
                 notes.append(f"replica {replica_path.name}")
             snapshot = self.lock.refresh()
             notes.append(f"sealed {snapshot.code_hash}")
-        else:
+        elif scan.has_findings:
             notes.extend(self._describe_findings(scan))
 
         self.notifier.send_notification(
@@ -89,7 +93,7 @@ class SelfFixer:
 
         return RepairReport(
             path=str(self.target_path),
-            scanned=True,
+            scanned=scanned,
             changed=changed,
             findings=scan.findings,
             notes=notes,
@@ -104,18 +108,20 @@ class SelfFixer:
     def heal_text(self, text: str) -> str:
         return text if text.endswith("\n") else f"{text}\n"
 
-    def _restore_missing_target(self) -> list[str]:
+    def _restore_missing_target(self) -> tuple[list[str], bool]:
         notes: list[str] = []
         latest_backup = self._latest_backup()
         if latest_backup is not None:
             restored = self._restore_backup(latest_backup)
+            if not self.target_path.exists():
+                raise FileNotFoundError(self.target_path)
             notes.append(f"restored {restored.name} from {latest_backup.name}")
-            return notes
+            return notes, True
 
         self.target_path.parent.mkdir(parents=True, exist_ok=True)
         self.target_path.write_text("", encoding="utf-8")
-        notes.append(f"initialized {self.target_path.name}")
-        return notes
+        notes.append(f"initialized {self.target_path.name} (no backups available)")
+        return notes, False
 
     def _latest_backup(self) -> Path | None:
         primary = self.backup_manager.latest_backup() if self.backup_manager is not None else None
@@ -136,9 +142,5 @@ class SelfFixer:
         if self.replica_backup_manager is not None and backup.is_relative_to(
             self.replica_backup_manager.backup_dir
         ):
-            return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
-        if self.backup_manager is not None:
-            return self.backup_manager.restore_backup(backup, destination=self.target_path)
-        if self.replica_backup_manager is not None:
             return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
         raise FileNotFoundError(backup)
