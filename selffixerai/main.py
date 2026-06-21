@@ -46,7 +46,10 @@ async def main() -> None:
     mode = _resolve_mode()
     logger.info("Starting Sovereign Self-Fixer | mode=%s", mode.value)
 
-    base_dir = Path.home() / ".local" / "share" / "sovereign-self-fixer"
+    from selffixerai.core.policy import DEFAULT_BASE_DIR
+
+    _raw_base = os.environ.get("SOVEREIGN_BASE_DIR")
+    base_dir = Path(_raw_base) if _raw_base else DEFAULT_BASE_DIR
     orchestrator = ModeOrchestrator(mode=mode, base_dir=base_dir)
 
     target_file = Path(__file__).resolve()

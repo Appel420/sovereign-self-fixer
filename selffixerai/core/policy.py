@@ -11,6 +11,12 @@ import enum
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final
+
+#: Default base directory for all local sovereign-self-fixer state.
+DEFAULT_BASE_DIR: Final[Path] = (
+    Path.home() / ".local" / "share" / "sovereign-self-fixer"
+)
 
 
 class RuntimeMode(str, enum.Enum):
@@ -35,9 +41,7 @@ class StoragePolicy:
     """Governs local and cloud storage behavior."""
 
     allow_cloud: bool = False
-    local_path: Path = field(
-        default_factory=lambda: Path.home() / ".local" / "share" / "sovereign-self-fixer"
-    )
+    local_path: Path = field(default_factory=lambda: DEFAULT_BASE_DIR)
     retention_count: int = 10
     retention_days: int = 90
 

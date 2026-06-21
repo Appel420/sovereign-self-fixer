@@ -435,11 +435,23 @@ def test_main_module_importable() -> None:
 async def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SOVEREIGN_MODE", "ghost")
+    base_dir = tmp_path / "sov"
+
+    # Patch the default base directory so state lands under tmp_path
+    monkeypatch.setenv("SOVEREIGN_BASE_DIR", str(base_dir))
+    base_dir.mkdir(parents=True, exist_ok=True)
 
     from selffixerai.main import main
 
     task = asyncio.create_task(main())
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.15)
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+
+    # The runtime must have written an audit log entry for 'startup'
+    audit_log_files = list(base_dir.glob("audit.log.json"))
+    assert audit_log_files, "Expected audit log to be written during startup"
+    raw = json.loads(audit_log_files[0].read_text(encoding="utf-8"))
+    event_types = [e["event_type"] for e in raw.get("entries", [])]
+    assert "startup" in event_types, f"Expected 'startup' in audit events; got {event_types}"

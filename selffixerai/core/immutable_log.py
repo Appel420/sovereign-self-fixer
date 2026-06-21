@@ -245,8 +245,12 @@ class ImmutableLog:
             return _sha256(b"empty")
         layer = [h.encode() for h in hashes]
         while len(layer) > 1:
+            # Duplicate the last node when the layer has an odd number of elements.
+            # This "balanced promotion" strategy ensures every leaf is covered and
+            # keeps the tree structure deterministic and verifiable without external
+            # state (as opposed to the alternative of promoting the lone node).
             if len(layer) % 2 == 1:
-                layer.append(layer[-1])  # duplicate last node for odd count
+                layer.append(layer[-1])
             layer = [
                 _sha256(layer[i] + layer[i + 1]).encode()
                 for i in range(0, len(layer), 2)

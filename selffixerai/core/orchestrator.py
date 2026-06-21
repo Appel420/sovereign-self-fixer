@@ -38,7 +38,7 @@ from typing import Any
 
 from selffixerai.core.backup_manager import BackupManager
 from selffixerai.core.immutable_log import ImmutableLog
-from selffixerai.core.policy import PolicyEngine, RuntimeMode, SovereignPolicy
+from selffixerai.core.policy import DEFAULT_BASE_DIR, PolicyEngine, RuntimeMode, SovereignPolicy
 from selffixerai.security.encryption import EncryptionManager
 from selffixerai.security.tamper_lock import TamperHardLock
 
@@ -69,7 +69,7 @@ class ModeOrchestrator:
     ) -> None:
         if isinstance(mode, str):
             mode = RuntimeMode(mode)
-        self.base_dir = base_dir or Path.home() / ".local" / "share" / "sovereign-self-fixer"
+        self.base_dir = base_dir or DEFAULT_BASE_DIR
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
         _policy = policy or SovereignPolicy.for_mode(mode)
@@ -81,7 +81,7 @@ class ModeOrchestrator:
         self._tamper_lock: TamperHardLock | None = None
 
         logger.info(
-            "ModeOrchestrator initialised | mode=%s | base_dir=%s",
+            "ModeOrchestrator initialized | mode=%s | base_dir=%s",
             self.mode.value,
             self.base_dir,
         )
