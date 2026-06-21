@@ -93,7 +93,7 @@ def test_self_fixer_restores_missing_target(tmp_path: Path) -> None:
     report = fixer.scan_once()
 
     assert report.scanned
-    assert report.changed is True
+    assert report.changed
     assert target.read_text(encoding="utf-8") == "print('restore me')\n"
     assert any(note.startswith("restored ") for note in report.notes)
 

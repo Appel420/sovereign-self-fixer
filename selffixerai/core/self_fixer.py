@@ -118,7 +118,9 @@ class SelfFixer:
         if latest_backup is not None:
             restored = self._restore_backup(latest_backup)
             if not restored.exists():
-                raise FileNotFoundError(self.target_path)
+                raise FileNotFoundError(
+                    f"restore failed: {latest_backup} -> {self.target_path}"
+                )
             notes.append(f"restored {restored.name} from {latest_backup.name}")
             return notes, True
 
