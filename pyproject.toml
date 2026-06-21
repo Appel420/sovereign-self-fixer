@@ -4,23 +4,31 @@ requires = ["hatchling"]
 
 [project]
 name = "sovereign-self-fixer"
-version = "0.3.0"
-description = "Sovereign Self-Fixer — ghost/hybrid/online modes with sovereign crypto and immutable audit logging"
+version = "0.3.1"
+description = "Sovereign Self-Fixer — ghost/hybrid/online modes with sovereign crypto, persistent memory, and immutable audit logging"
 authors = [{ name = "Derek Appel", email = "appel420@x.ai" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "cryptography>=42.0.0",
+    "cryptography>=42.0.0,<46.0.0",
 ]
 
+[project.scripts]
+sovereign-self-fixer = "selffixerai.main:main"
+
 [project.optional-dependencies]
+vector = [
+    "faiss-cpu>=1.8.0,<2.0.0",
+    "numpy>=1.26.0,<3.0.0",
+    "sentence-transformers>=3.0.0,<6.0.0",
+]
 pqc = ["oqs-python>=0.10.0"]
 dev = [
-    "build",
-    "pytest",
-    "pytest-asyncio",
-    "ruff",
-    "mypy",
+    "build>=1.2.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
 ]
 
 [tool.hatch.build.targets.wheel]
