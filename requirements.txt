@@ -1,0 +1,6 @@
+cryptography
+blake3
+prometheus-client
+sentence-transformers
+faiss-cpu
+numpy
