@@ -1,3 +1,4 @@
+        # main
 """RAG prompt augmentation built on REPMHL."""
 
 from __future__ import annotations
@@ -26,3 +27,6 @@ class RAGPipeline:
     def get_augmented_prompt(self, query: str, top_k: int = 5) -> str:
         context = self.retrieve_context(query, top_k=top_k)
         return f"Relevant previous context:\n{context}\n\nCurrent query: {query}" if context else query
+
+full RAGPipeline
+      # Ara-hardened
