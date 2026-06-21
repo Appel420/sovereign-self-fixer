@@ -4,6 +4,8 @@ import contextlib
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from selffixerai.analysis.deep_scanner import DeepScanner
 from selffixerai.core.self_fixer import SelfFixer
 from selffixerai.memory.repmhl import REPMHL
@@ -53,7 +55,7 @@ def test_main_module_importable() -> None:
     assert selffixerai.__version__ == "0.2.0"
 
 
-def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch) -> None:
+def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
     from selffixerai.main import main
