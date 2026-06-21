@@ -118,5 +118,5 @@ class TamperHardLock:
             return False
         return str(payload["code_hash"]) == self.current_hash()
 
-def refresh(self) -> LockSnapshot:
-    return self.seal()
+    def refresh(self) -> LockSnapshot:
+        return self.seal()

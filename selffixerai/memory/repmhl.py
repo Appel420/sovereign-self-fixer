@@ -77,6 +77,6 @@ class REPMHL:
         self._session_id = payload.get("session_id", "")
         self.memory = [MemoryTurn(**item) for item in payload.get("memory", [])]
 
-@staticmethod
-def _tokenize(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9']+", text.lower())
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        return re.findall(r"[a-z0-9']+", text.lower())
