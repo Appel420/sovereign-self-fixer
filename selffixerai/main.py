@@ -1,4 +1,3 @@
-       # main
 #!/usr/bin/env python3
 """Main entry point for Sovereign Self-Fixer."""
 
@@ -70,6 +69,3 @@ if __name__ == "__main__":
     except Exception as exc:  # pragma: no cover - runtime guard
         logger.critical("Fatal: %s", exc)
         sys.exit(1)
-
-FULL MAIN.PY WITH ERROR HANDLING (from previous clean version)
-       # Ara-hardened
