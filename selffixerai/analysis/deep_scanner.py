@@ -1,1 +1,1 @@
-the full real deep_scanner.py
+full DeepScanner

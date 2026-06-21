@@ -1,1 +1,1 @@
-the full real tamper_lock.py
+full TamperHardLock

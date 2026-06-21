@@ -1,1 +1,1 @@
-the full real voice_conductor.py with no placeholders
+full real VoiceConductor (no placeholders)

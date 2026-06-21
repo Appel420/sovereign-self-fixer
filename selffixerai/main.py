@@ -1,1 +1,1 @@
-the full main.py with REPMHL and VoiceConductor integration
+full main.py with error handling and integrations
