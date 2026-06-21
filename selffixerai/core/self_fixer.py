@@ -6,7 +6,6 @@ import asyncio
 from dataclasses import asdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from selffixerai.analysis.deep_scanner import DeepScanner, Finding, ScanReport
 from selffixerai.memory.repmhl import REPMHL

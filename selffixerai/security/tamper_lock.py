@@ -12,7 +12,7 @@ from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .encryption import EncryptionManager
 from .tpm import TPMManager
@@ -71,18 +71,20 @@ class TamperHardLock:
         return sha256(self._code_bytes()).hexdigest()
 
     def seal(self) -> LockSnapshot:
+        code_hash = self.current_hash()
+        timestamp = datetime.now(timezone.utc).isoformat()
         payload = {
-            "code_hash": self.current_hash(),
+            "code_hash": code_hash,
             "previous_hash": self._previous_hash,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": timestamp,
             "tpm": self.tpm.quote().digest,
         }
         payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
         signature = self._private_key.sign(payload_bytes)
         snapshot = LockSnapshot(
-            code_hash=payload["code_hash"],
+            code_hash=str(payload["code_hash"]),
             previous_hash=payload["previous_hash"],
-            timestamp=payload["timestamp"],
+            timestamp=str(payload["timestamp"]),
             signature=base64.b64encode(signature).decode("ascii"),
         )
         state_payload = {"payload": payload, "signature": snapshot.signature}

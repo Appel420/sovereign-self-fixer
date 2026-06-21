@@ -73,6 +73,7 @@ class REPMHL:
         self.storage_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _load(self) -> None:
+        assert self.storage_path is not None
         payload = json.loads(self.storage_path.read_text(encoding="utf-8"))
         self._session_id = payload.get("session_id", "")
         self.memory = [MemoryTurn(**item) for item in payload.get("memory", [])]

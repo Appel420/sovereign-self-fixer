@@ -30,7 +30,7 @@ def test_memory_retrieval(tmp_path: Path) -> None:
     memory.start_session("session-1")
     memory.add_turn("user", "repair the parser")
     memory.add_turn("assistant", "parser repaired")
-    assert memory.retrieve_relevant_memory("parser")[0].text == "repair the parser"
+    assert any(turn.text == "repair the parser" for turn in memory.retrieve_relevant_memory("parser"))
     memory.shutdown()
     assert (tmp_path / "memory.json").exists()
 

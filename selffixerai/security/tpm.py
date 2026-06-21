@@ -10,7 +10,6 @@ import subprocess
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Final
 
 from .encryption import EncryptionManager
 
@@ -34,8 +33,9 @@ class TPMManager:
 
     @staticmethod
     def _detect_tpm_tools() -> bool:
-        return shutil.which("tpm2_pcrread") is not None and (
-            os.path.exists("/dev/tpmrm0") or os.environ.get("TPM2TOOLS_TCTI")
+        return bool(
+            shutil.which("tpm2_pcrread") is not None
+            and (os.path.exists("/dev/tpmrm0") or os.environ.get("TPM2TOOLS_TCTI"))
         )
 
     @property
