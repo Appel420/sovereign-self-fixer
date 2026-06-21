@@ -1,1 +1,1 @@
-the full content from previous read
+the full real tamper_lock.py

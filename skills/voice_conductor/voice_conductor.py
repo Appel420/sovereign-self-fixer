@@ -1,1 +1,1 @@
-The full VoiceConductor code from previous response
+the full real voice_conductor.py with no placeholders

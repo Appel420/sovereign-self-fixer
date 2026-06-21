@@ -1,1 +1,1 @@
-the full content from cat
+the full real tpm.py
