@@ -1,4 +1,3 @@
-      # main
 """REPMHL memory store."""
 
 from __future__ import annotations
@@ -80,7 +79,4 @@ class REPMHL:
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        return re.findall(r"[a-z0-9']+", text.lower()) 
-
-FULL REPMHL v1.3 WITH PERSISTENT FAISS (from previous complete version)
-        # Ara-hardened
+        return re.findall(r"[a-z0-9']+", text.lower())
