@@ -70,6 +70,34 @@ def test_self_fixer_scan_once(tmp_path: Path) -> None:
     assert any(note.startswith("backup ") for note in report.notes)
 
 
+def test_self_fixer_restores_missing_target(tmp_path: Path) -> None:
+    target = tmp_path / "target.py"
+    target.write_text("print('restore me')\n", encoding="utf-8")
+
+    backup_manager = BackupManager(
+        backup_dir=tmp_path / "backups",
+        encryption=EncryptionManager(key_path=tmp_path / "backup.key"),
+    )
+    backup_manager.create_backup(target)
+    target.unlink()
+
+    lock = TamperHardLock(code_file=target, state_file=tmp_path / "state.enc", key_file=tmp_path / "lock.key")
+    fixer = SelfFixer(
+        lock=lock,
+        scanner=DeepScanner(),
+        notifier=Notifier(),
+        memory=REPMHL(),
+        backup_manager=backup_manager,
+        target_path=target,
+    )
+    report = fixer.scan_once()
+
+    assert report.scanned
+    assert report.changed is True
+    assert target.read_text(encoding="utf-8") == "print('restore me')\n"
+    assert any(note.startswith("restored ") for note in report.notes)
+
+
 def test_main_module_importable() -> None:
     import selffixerai
 
@@ -87,6 +115,12 @@ def test_runtime_policy_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert policy.memory_path == tmp_path / "runtime" / "memory.json"
     assert policy.state_path == tmp_path / "runtime" / "state.json.enc"
     assert policy.backup_dir == tmp_path / "runtime" / "backups"
+    assert policy.backup_retention == 20
+    assert policy.scan_interval == 3.0
+    assert policy.replica_backup_dir == tmp_path / "runtime" / "replicas" / "hybrid"
+    assert policy.is_hybrid
+    assert not policy.is_ghost
+    assert not policy.is_online
 
 
 def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

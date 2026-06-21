@@ -32,6 +32,7 @@ class SelfFixer:
         notifier: Notifier,
         memory: REPMHL | None = None,
         backup_manager: BackupManager | None = None,
+        replica_backup_manager: BackupManager | None = None,
         target_path: str | Path | None = None,
         scan_interval: float = 5.0,
     ) -> None:
@@ -40,6 +41,7 @@ class SelfFixer:
         self.notifier = notifier
         self.memory = memory
         self.backup_manager = backup_manager
+        self.replica_backup_manager = replica_backup_manager
         self.target_path = Path(target_path) if target_path else self.lock.code_file
         self.scan_interval = scan_interval
 
@@ -52,19 +54,22 @@ class SelfFixer:
                 continue
 
     def scan_once(self) -> RepairReport:
-        if not self.target_path.exists():
-            report = RepairReport(path=str(self.target_path), scanned=False, changed=False)
-            self.notifier.send_notification("scan_skipped", {"path": report.path})
-            return report
-
-        scan = self.scanner.scan_file(self.target_path)
         changed = False
         notes: list[str] = []
+
+        if not self.target_path.exists():
+            notes.extend(self._restore_missing_target())
+            changed = True
+
+        scan = self.scanner.scan_file(self.target_path)
 
         if not scan.has_findings:
             if self.backup_manager is not None:
                 backup_path = self.backup_manager.create_backup(self.target_path)
                 notes.append(f"backup {backup_path.name}")
+            if self.replica_backup_manager is not None:
+                replica_path = self.replica_backup_manager.create_backup(self.target_path)
+                notes.append(f"replica {replica_path.name}")
             snapshot = self.lock.refresh()
             notes.append(f"sealed {snapshot.code_hash}")
         else:
@@ -98,3 +103,42 @@ class SelfFixer:
 
     def heal_text(self, text: str) -> str:
         return text if text.endswith("\n") else f"{text}\n"
+
+    def _restore_missing_target(self) -> list[str]:
+        notes: list[str] = []
+        latest_backup = self._latest_backup()
+        if latest_backup is not None:
+            restored = self._restore_backup(latest_backup)
+            notes.append(f"restored {restored.name} from {latest_backup.name}")
+            return notes
+
+        self.target_path.parent.mkdir(parents=True, exist_ok=True)
+        self.target_path.write_text("", encoding="utf-8")
+        notes.append(f"initialized {self.target_path.name}")
+        return notes
+
+    def _latest_backup(self) -> Path | None:
+        primary = self.backup_manager.latest_backup() if self.backup_manager is not None else None
+        replica = (
+            self.replica_backup_manager.latest_backup()
+            if self.replica_backup_manager is not None
+            else None
+        )
+        if primary is None:
+            return replica
+        if replica is None:
+            return primary
+        return max((primary, replica), key=lambda path: path.stat().st_mtime)
+
+    def _restore_backup(self, backup: Path) -> Path:
+        if self.backup_manager is not None and backup.is_relative_to(self.backup_manager.backup_dir):
+            return self.backup_manager.restore_backup(backup, destination=self.target_path)
+        if self.replica_backup_manager is not None and backup.is_relative_to(
+            self.replica_backup_manager.backup_dir
+        ):
+            return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
+        if self.backup_manager is not None:
+            return self.backup_manager.restore_backup(backup, destination=self.target_path)
+        if self.replica_backup_manager is not None:
+            return self.replica_backup_manager.restore_backup(backup, destination=self.target_path)
+        raise FileNotFoundError(backup)

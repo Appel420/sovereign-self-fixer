@@ -35,14 +35,21 @@ async def main() -> None:
     scanner = DeepScanner()
     notifier = Notifier()
     repmhl = REPMHL(storage_path=policy.memory_path)
-    backup_manager = BackupManager(backup_dir=policy.backup_dir, retention=10)
+    backup_manager = BackupManager(backup_dir=policy.backup_dir, retention=policy.backup_retention)
+    replica_backup_manager = (
+        BackupManager(backup_dir=policy.replica_backup_dir, retention=policy.backup_retention)
+        if policy.replica_backup_dir is not None
+        else None
+    )
     fixer = SelfFixer(
         lock=lock,
         scanner=scanner,
         notifier=notifier,
         memory=repmhl,
         backup_manager=backup_manager,
+        replica_backup_manager=replica_backup_manager,
         target_path=target_file,
+        scan_interval=policy.scan_interval,
     )
 
     await voice_conductor.initialize()
