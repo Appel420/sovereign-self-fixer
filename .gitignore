@@ -34,5 +34,3 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Sovereign Self-Fixer runtime data
-~/.local/share/sovereign-self-fixer/
