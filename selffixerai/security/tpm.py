@@ -1,4 +1,3 @@
-       # main
 """TPM-aware environment sealing and attestation helpers."""
 
 from __future__ import annotations
@@ -84,6 +83,3 @@ class TPMManager:
         pcrs = json.dumps(self.read_pcrs(), sort_keys=True).encode("utf-8")
         machine = os.environ.get("HOSTNAME", "").encode("utf-8")
         return sha256(pcrs + machine + label.encode("utf-8")).digest()
-
-full TPMManager
-       # Ara-hardened
