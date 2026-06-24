@@ -1,4 +1,4 @@
-"""Encrypted storage utilities using ChaCha20-Poly1305."""
+"""Encrypted storage utilities."""
 
 from __future__ import annotations
 
@@ -49,12 +49,7 @@ class EncryptedBlob:
 
 
 class EncryptionManager:
-    """Create and manage a persistent application encryption key.
-
-    Uses ChaCha20-Poly1305 for all symmetric encryption. The key is
-    stored at *key_path* with 0o600 permissions; plaintext secrets must
-    never be passed to the encryption layer unredacted.
-    """
+    """Create and manage a persistent application encryption key."""
 
     def __init__(self, key_material: bytes | str | None = None, key_path: Path | None = None) -> None:
         self.key_path = key_path or DEFAULT_KEY_PATH
@@ -86,7 +81,7 @@ class EncryptionManager:
         encrypted = EncryptedBlob.from_bytes(blob)
         try:
             return self._cipher.decrypt(encrypted.nonce, encrypted.ciphertext, associated_data)
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - cryptography failure path
             raise EncryptionError("decryption failed") from exc
 
     def encrypt_file(

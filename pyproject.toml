@@ -4,11 +4,16 @@ requires = ["hatchling"]
 
 [project]
 name = "sovereign-self-fixer"
+        copilot/remove-placeholder-files
+version = "0.3.0"
+description = "Sovereign Self-Fixer with TPM 2.0 + REPMHL v1.3 + Voice Conductor (Ara-hardened)"
+
 version = "0.3.1"
 description = "Sovereign Self-Fixer — ghost/hybrid/online modes with sovereign crypto, persistent memory, and immutable audit logging"
+        main
 authors = [{ name = "Derek Appel", email = "appel420@x.ai" }]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "cryptography>=42.0.0,<46.0.0",
 ]
@@ -36,11 +41,12 @@ packages = ["selffixerai", "skills"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py313"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+pythonpath = ["."]

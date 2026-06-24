@@ -1,33 +1,111 @@
-"""Runtime policy engine — governs mode, networking, crypto, storage, and retention.
-
-A ``SovereignPolicy`` is the canonical source of truth for what is allowed
-at runtime.  It is loaded once by the ``PolicyEngine`` and never overridden
-by remote control paths.  The cloud is never authoritative over policy.
-"""
+"""Runtime policy and filesystem layout for Sovereign Self-Fixer."""
 
 from __future__ import annotations
 
 import enum
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import ClassVar, Final
 
-#: Default base directory for all local sovereign-self-fixer state.
-DEFAULT_BASE_DIR: Final[Path] = (
-    Path.home() / ".local" / "share" / "sovereign-self-fixer"
-)
+DEFAULT_BASE_DIR: Final[Path] = Path.home() / ".local" / "share" / "sovereign-self-fixer"
 
 
 class RuntimeMode(str, enum.Enum):
     """Explicit runtime execution profile."""
 
-    GHOST = "ghost"    # fully offline / airgapped — zero outbound dependency
-    HYBRID = "hybrid"  # local-first with encrypted cloud assistance
-    ONLINE = "online"  # connected but still locally-sovereign
+    GHOST = "ghost"
+    HYBRID = "hybrid"
+    ONLINE = "online"
 
 
-@dataclass
+@dataclass(slots=True)
+class RuntimePolicy:
+    """Resolve runtime mode and on-disk paths from the environment."""
+
+    _MODE_SETTINGS: ClassVar[dict[str, dict[str, int | float | bool]]] = {
+        "ghost": {
+            "backup_retention": 10,
+            "scan_interval": 5.0,
+            "has_replica_backup": False,
+        },
+        "hybrid": {
+            "backup_retention": 20,
+            "scan_interval": 3.0,
+            "has_replica_backup": True,
+        },
+        "online": {
+            "backup_retention": 50,
+            "scan_interval": 2.0,
+            "has_replica_backup": True,
+        },
+    }
+
+    mode: str
+    base_dir: Path
+
+    def __post_init__(self) -> None:
+        if isinstance(self.mode, RuntimeMode):
+            self.mode = self.mode.value
+        if self.mode not in self._MODE_SETTINGS:
+            raise ValueError(f"invalid runtime mode: {self.mode}")
+
+    @classmethod
+    def from_env(cls) -> "RuntimePolicy":
+        mode = os.environ.get("SOVEREIGN_MODE", "ghost").strip().lower()
+        if mode not in {"ghost", "hybrid", "online"}:
+            mode = "ghost"
+
+        base_dir = Path(
+            os.environ.get(
+                "SOVEREIGN_BASE_DIR",
+                DEFAULT_BASE_DIR,
+            )
+        ).expanduser()
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return cls(mode=mode, base_dir=base_dir)
+
+    @property
+    def is_ghost(self) -> bool:
+        return self.mode == "ghost"
+
+    @property
+    def is_hybrid(self) -> bool:
+        return self.mode == "hybrid"
+
+    @property
+    def is_online(self) -> bool:
+        return self.mode == "online"
+
+    @property
+    def memory_path(self) -> Path:
+        return self.base_dir / "memory.json"
+
+    @property
+    def state_path(self) -> Path:
+        return self.base_dir / "state.json.enc"
+
+    @property
+    def backup_dir(self) -> Path:
+        return self.base_dir / "backups"
+
+    @property
+    def backup_retention(self) -> int:
+        return int(self._MODE_SETTINGS[self.mode]["backup_retention"])
+
+    @property
+    def scan_interval(self) -> float:
+        return float(self._MODE_SETTINGS[self.mode]["scan_interval"])
+
+    @property
+    def replica_backup_dir(self) -> Path | None:
+        if not bool(self._MODE_SETTINGS[self.mode]["has_replica_backup"]):
+            return None
+        return self.base_dir / "replicas" / self.mode
+
+
+@dataclass(slots=True)
 class NetworkPolicy:
     """Governs outbound network access."""
 
@@ -36,7 +114,7 @@ class NetworkPolicy:
     require_tls: bool = True
 
 
-@dataclass
+@dataclass(slots=True)
 class StoragePolicy:
     """Governs local and cloud storage behavior."""
 
@@ -46,16 +124,9 @@ class StoragePolicy:
     retention_days: int = 90
 
 
-@dataclass
+@dataclass(slots=True)
 class CryptoPolicy:
-    """Selects which algorithms are permitted for this mode.
-
-    Algorithm identifiers:
-    - symmetric_algo: ``"chacha20poly1305"`` | ``"aes256gcm"``
-    - hash_algo:      ``"sha3_512"`` | ``"sha256"``
-    - signing_algo:   ``"ed25519"`` | ``"ml-dsa-87"``
-    - kem_algo:       ``"none"`` | ``"ml-kem-768"``
-    """
+    """Selects which algorithms are permitted for this mode."""
 
     profile: str = "sovereign-offline"
     symmetric_algo: str = "chacha20poly1305"
@@ -65,7 +136,7 @@ class CryptoPolicy:
     allow_pqc: bool = False
 
 
-@dataclass
+@dataclass(slots=True)
 class BackupPolicy:
     """Governs backup creation, encryption, signing, and retention."""
 
@@ -76,7 +147,7 @@ class BackupPolicy:
     retention_days: int = 90
 
 
-@dataclass
+@dataclass(slots=True)
 class LogPolicy:
     """Governs the immutable audit log."""
 
@@ -84,13 +155,13 @@ class LogPolicy:
     append_only: bool = True
     hash_chain: bool = True
     sign_checkpoints: bool = True
-    checkpoint_interval: int = 100  # entries between signed Merkle checkpoints
+    checkpoint_interval: int = 100
     log_path: Path | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class SovereignPolicy:
-    """Complete runtime policy.  Constructed once; never mutated by remote callers."""
+    """Complete runtime policy for a selected mode."""
 
     mode: RuntimeMode = RuntimeMode.GHOST
     network: NetworkPolicy = field(default_factory=NetworkPolicy)
@@ -99,13 +170,8 @@ class SovereignPolicy:
     backup: BackupPolicy = field(default_factory=BackupPolicy)
     log: LogPolicy = field(default_factory=LogPolicy)
 
-    # ------------------------------------------------------------------
-    # Factory constructors
-    # ------------------------------------------------------------------
-
     @classmethod
     def for_mode(cls, mode: RuntimeMode) -> "SovereignPolicy":
-        """Return a well-formed policy pre-configured for *mode*."""
         if mode == RuntimeMode.GHOST:
             return cls(
                 mode=mode,
@@ -119,7 +185,7 @@ class SovereignPolicy:
                     kem_algo="none",
                     allow_pqc=False,
                 ),
-                backup=BackupPolicy(enabled=True, encrypt=True, sign=True),
+                backup=BackupPolicy(enabled=True, encrypt=True, sign=True, retention_count=10),
                 log=LogPolicy(enabled=True, hash_chain=True, sign_checkpoints=True),
             )
         if mode == RuntimeMode.HYBRID:
@@ -135,10 +201,9 @@ class SovereignPolicy:
                     kem_algo="ml-kem-768",
                     allow_pqc=True,
                 ),
-                backup=BackupPolicy(enabled=True, encrypt=True, sign=True),
+                backup=BackupPolicy(enabled=True, encrypt=True, sign=True, retention_count=20),
                 log=LogPolicy(enabled=True, hash_chain=True, sign_checkpoints=True),
             )
-        # ONLINE
         return cls(
             mode=mode,
             network=NetworkPolicy(allow_outbound=True, require_tls=True),
@@ -151,23 +216,17 @@ class SovereignPolicy:
                 kem_algo="ml-kem-768",
                 allow_pqc=True,
             ),
-            backup=BackupPolicy(enabled=True, encrypt=True, sign=True),
+            backup=BackupPolicy(enabled=True, encrypt=True, sign=True, retention_count=50),
             log=LogPolicy(enabled=True, hash_chain=True, sign_checkpoints=True),
         )
 
-    # ------------------------------------------------------------------
-    # Enforcement helpers
-    # ------------------------------------------------------------------
-
     def enforce_network(self) -> None:
-        """Raise ``PermissionError`` if outbound networking is forbidden."""
         if not self.network.allow_outbound:
             raise PermissionError(
                 f"Runtime mode '{self.mode.value}' forbids outbound network access"
             )
 
     def to_dict(self) -> dict[str, object]:
-        """Return a redacted summary safe to include in audit logs."""
         return {
             "mode": self.mode.value,
             "network": {"allow_outbound": self.network.allow_outbound},
@@ -185,12 +244,7 @@ class SovereignPolicy:
 
 
 class PolicyEngine:
-    """Load, validate, and enforce sovereign runtime policy.
-
-    The policy engine is the single authoritative holder of the current
-    ``SovereignPolicy``.  External services must query it rather than
-    holding their own policy copies.
-    """
+    """Load, validate, and enforce sovereign runtime policy."""
 
     def __init__(
         self,
@@ -219,13 +273,15 @@ class PolicyEngine:
         return self._policy.storage.allow_cloud
 
     def check_network(self) -> None:
-        """Raise if outbound networking is not allowed."""
         self._policy.enforce_network()
 
     @staticmethod
     def _load_from_file(policy_file: Path) -> SovereignPolicy:
         raw = json.loads(policy_file.read_text(encoding="utf-8"))
-        mode = RuntimeMode(raw.get("mode", "ghost"))
+        try:
+            mode = RuntimeMode(raw.get("mode", "ghost"))
+        except ValueError:
+            mode = RuntimeMode.GHOST
         policy = SovereignPolicy.for_mode(mode)
         if "crypto" in raw:
             c = raw["crypto"]

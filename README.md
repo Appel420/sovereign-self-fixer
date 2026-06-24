@@ -7,6 +7,8 @@ Sovereign Self-Fixer is a Python service that monitors its own source, stores en
 - Encrypted file and key storage
 - Tamper-evident state locking
 - Static analysis for unsafe Python patterns
+- Mode-aware runtime profiles for ghost, hybrid, and online operation
+- Automatic file restoration from encrypted backups when a target goes missing
 - In-memory and persisted turn history
 - Structured notifications
 - A module entry point via `python -m selffixerai`
@@ -27,6 +29,9 @@ pip install -e ".[dev]"
 ```bash
 python -m selffixerai
 ```
+
+Set `SOVEREIGN_MODE` to `ghost`, `hybrid`, or `online` to select the runtime profile.
+Use `SOVEREIGN_BASE_DIR` to control where memory, state, and backups are stored.
 
 ## Test
 

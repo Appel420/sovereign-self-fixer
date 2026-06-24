@@ -1,28 +1,19 @@
 #!/usr/bin/env python3
-"""Main entry point for Sovereign Self-Fixer.
-
-Runtime mode is selected via the ``SOVEREIGN_MODE`` environment variable:
-- ``ghost``  (default) — fully offline / airgapped
-- ``hybrid``           — local-first with encrypted cloud assistance
-- ``online``           — connected but still locally-sovereign
-
-The ``ModeOrchestrator`` is the first object constructed; it governs all
-security-critical service creation for the selected mode.
-"""
+"""Main entry point for Sovereign Self-Fixer."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import logging
-import os
 import signal
 import sys
 from pathlib import Path
 
 from selffixerai.analysis.deep_scanner import DeepScanner
+from selffixerai.core.backup_manager import BackupManager
 from selffixerai.core.orchestrator import ModeOrchestrator
-from selffixerai.core.policy import RuntimeMode
+from selffixerai.core.policy import RuntimePolicy
 from selffixerai.core.self_fixer import SelfFixer
 from selffixerai.memory.repmhl import REPMHL
 from selffixerai.notifications import Notifier
@@ -32,45 +23,40 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | 
 logger = logging.getLogger(__name__)
 
 
-def _resolve_mode() -> RuntimeMode:
-    raw = os.environ.get("SOVEREIGN_MODE", "ghost").strip().lower()
-    try:
-        return RuntimeMode(raw)
-    except ValueError:
-        logger.warning("Unknown SOVEREIGN_MODE=%r — defaulting to ghost", raw)
-        return RuntimeMode.GHOST
-
-
 async def main() -> None:
     """Run the service loop."""
-    mode = _resolve_mode()
-    logger.info("Starting Sovereign Self-Fixer | mode=%s", mode.value)
 
-    from selffixerai.core.policy import DEFAULT_BASE_DIR
-
-    _raw_base = os.environ.get("SOVEREIGN_BASE_DIR")
-    base_dir = Path(_raw_base) if _raw_base else DEFAULT_BASE_DIR
-    orchestrator = ModeOrchestrator(mode=mode, base_dir=base_dir)
+    policy = RuntimePolicy.from_env()
+    orchestrator = ModeOrchestrator(mode=policy.mode, base_dir=policy.base_dir)
+    logger.info("Starting Sovereign Self-Fixer | mode=%s", policy.mode)
 
     target_file = Path(__file__).resolve()
-    memory_path = base_dir / "memory.json"
-
     lock = orchestrator.tamper_lock(code_file=target_file)
-    backup_mgr = orchestrator.backup_manager()
     scanner = DeepScanner()
     notifier = Notifier()
-    repmhl = REPMHL(storage_path=memory_path)
-
+    repmhl = REPMHL(storage_path=policy.memory_path)
+    backup_manager = orchestrator.backup_manager()
+    replica_backup_manager = (
+        BackupManager(
+            backup_dir=policy.replica_backup_dir,
+            retention=policy.backup_retention,
+            encryption=orchestrator.encryption(),
+        )
+        if policy.replica_backup_dir is not None
+        else None
+    )
     fixer = SelfFixer(
         lock=lock,
         scanner=scanner,
         notifier=notifier,
         memory=repmhl,
+        backup_manager=backup_manager,
+        replica_backup_manager=replica_backup_manager,
         target_path=target_file,
-        backup_manager=backup_mgr,
+        scan_interval=policy.scan_interval,
     )
 
-    orchestrator.log_event("startup", data={"mode": mode.value, "version": "0.3.0"})
+    orchestrator.log_event("startup", data={"mode": policy.mode, "version": "0.3.0"})
 
     await voice_conductor.initialize()
     repmhl.start_session()
@@ -86,7 +72,7 @@ async def main() -> None:
     except Exception:  # pragma: no cover - runtime guard
         logger.exception("Runtime error")
     finally:
-        orchestrator.log_event("shutdown", data={"mode": mode.value})
+        orchestrator.log_event("shutdown", data={"mode": policy.mode})
         orchestrator.audit_log().force_checkpoint()
         repmhl.shutdown()
         await voice_conductor.shutdown()

@@ -1,4 +1,4 @@
-"""Tamper-evident state locking with Ed25519 signatures."""
+"""Tamper-evident state locking."""
 
 from __future__ import annotations
 
@@ -27,13 +27,7 @@ class LockSnapshot:
 
 
 class TamperHardLock:
-    """Persist and verify a chained digest of the monitored source file.
-
-    Each call to ``seal()`` / ``refresh()`` signs a JSON payload that
-    includes the code hash, the previous hash, the timestamp, and a TPM
-    quote digest (if hardware is available).  The signed state is stored
-    encrypted with ``EncryptionManager``.
-    """
+    """Persist and verify a chained digest of the monitored source file."""
 
     def __init__(
         self,
@@ -43,12 +37,8 @@ class TamperHardLock:
         tpm_manager: TPMManager | None = None,
     ) -> None:
         self.code_file = Path(code_file)
-        self.state_file = (
-            Path(state_file) if state_file else self.code_file.with_suffix(".state.json.enc")
-        )
-        self.key_file = (
-            Path(key_file) if key_file else self.state_file.with_suffix(".ed25519")
-        )
+        self.state_file = Path(state_file) if state_file else self.code_file.with_suffix(".state.json.enc")
+        self.key_file = Path(key_file) if key_file else self.state_file.with_suffix(".ed25519")
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.key_file.parent.mkdir(parents=True, exist_ok=True)
         self.encryption = EncryptionManager()
@@ -98,9 +88,7 @@ class TamperHardLock:
             signature=base64.b64encode(signature).decode("ascii"),
         )
         state_payload = {"payload": payload, "signature": snapshot.signature}
-        self.state_file.write_bytes(
-            self.encryption.encrypt_bytes(json.dumps(state_payload).encode("utf-8"))
-        )
+        self.state_file.write_bytes(self.encryption.encrypt_bytes(json.dumps(state_payload).encode("utf-8")))
         self._previous_hash = snapshot.code_hash
         return snapshot
 
@@ -125,9 +113,7 @@ class TamperHardLock:
         payload = state_payload["payload"]
         payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
         try:
-            self._public_key.verify(
-                base64.b64decode(state_payload["signature"]), payload_bytes
-            )
+            self._public_key.verify(base64.b64decode(state_payload["signature"]), payload_bytes)
         except InvalidSignature:
             return False
         return str(payload["code_hash"]) == self.current_hash()

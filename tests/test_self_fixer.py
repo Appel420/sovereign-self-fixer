@@ -13,7 +13,13 @@ from selffixerai.analysis.deep_scanner import DeepScanner
 from selffixerai.core.backup_manager import BackupManager
 from selffixerai.core.immutable_log import ImmutableLog
 from selffixerai.core.orchestrator import ModeOrchestrator
-from selffixerai.core.policy import BackupPolicy, PolicyEngine, RuntimeMode, SovereignPolicy
+from selffixerai.core.policy import (
+    BackupPolicy,
+    PolicyEngine,
+    RuntimeMode,
+    RuntimePolicy,
+    SovereignPolicy,
+)
 from selffixerai.core.self_fixer import SelfFixer
 from selffixerai.crypto.profiles import get_profile, hash_bytes
 from selffixerai.memory.repmhl import REPMHL
@@ -122,21 +128,66 @@ def test_self_fixer_scan_once(tmp_path: Path) -> None:
     target = tmp_path / "target.py"
     target.write_text("print('ok')\n", encoding="utf-8")
     lock = TamperHardLock(
-        code_file=target, state_file=tmp_path / "state.enc", key_file=tmp_path / "lock.key"
+        code_file=target,
+        state_file=tmp_path / "state.enc",
+        key_file=tmp_path / "lock.key",
     )
     fixer = SelfFixer(
-        lock=lock, scanner=DeepScanner(), notifier=Notifier(), memory=REPMHL(), target_path=target
+        lock=lock,
+        scanner=DeepScanner(),
+        notifier=Notifier(),
+        memory=REPMHL(),
+        backup_manager=BackupManager(
+            backup_dir=tmp_path / "backups",
+            encryption=EncryptionManager(key_path=tmp_path / "backup.key"),
+        ),
+        target_path=target,
     )
     report = fixer.scan_once()
     assert report.scanned
     assert report.changed is False
     assert lock.verify()
+    assert any(note.startswith("backup ") for note in report.notes)
+
+
+def test_self_fixer_restores_missing_target(tmp_path: Path) -> None:
+    target = tmp_path / "target.py"
+    target.write_text("print('restore me')\n", encoding="utf-8")
+
+    backup_manager = BackupManager(
+        backup_dir=tmp_path / "backups",
+        encryption=EncryptionManager(key_path=tmp_path / "backup.key"),
+    )
+    backup_manager.create_backup(target)
+    target.unlink()
+
+    lock = TamperHardLock(
+        code_file=target,
+        state_file=tmp_path / "state.enc",
+        key_file=tmp_path / "lock.key",
+    )
+    fixer = SelfFixer(
+        lock=lock,
+        scanner=DeepScanner(),
+        notifier=Notifier(),
+        memory=REPMHL(),
+        backup_manager=backup_manager,
+        target_path=target,
+    )
+    report = fixer.scan_once()
+
+    assert report.scanned and report.changed
+    assert target.read_text(encoding="utf-8") == "print('restore me')\n"
+    assert lock.verify()
+    assert any(note.startswith("restored ") for note in report.notes)
 
 
 def test_self_fixer_scan_missing_file(tmp_path: Path) -> None:
     target = tmp_path / "missing.py"
     lock = TamperHardLock(
-        code_file=target, state_file=tmp_path / "state.enc", key_file=tmp_path / "lock.key"
+        code_file=target,
+        state_file=tmp_path / "state.enc",
+        key_file=tmp_path / "lock.key",
     )
     fixer = SelfFixer(lock=lock, scanner=DeepScanner(), notifier=Notifier(), target_path=target)
     report = fixer.scan_once()
@@ -191,7 +242,6 @@ def test_backup_retention_prunes(tmp_path: Path) -> None:
 def test_backup_blob_tamper_detected(tmp_path: Path) -> None:
     mgr = BackupManager(backup_dir=tmp_path / "backups")
     manifest_path = mgr.create_backup(b"original")
-    # Corrupt the blob
     blobs = list((tmp_path / "backups").glob("*.blob"))
     assert blobs
     blobs[0].write_bytes(b"corrupted")
@@ -224,7 +274,7 @@ def test_immutable_log_chain_valid(tmp_path: Path) -> None:
 
 def test_immutable_log_genesis(tmp_path: Path) -> None:
     log = ImmutableLog(log_path=tmp_path / "audit.log.json")
-    assert log.verify_chain()  # empty log is valid
+    assert log.verify_chain()
 
 
 def test_immutable_log_tamper_detected(tmp_path: Path) -> None:
@@ -232,7 +282,6 @@ def test_immutable_log_tamper_detected(tmp_path: Path) -> None:
     log = ImmutableLog(log_path=log_path, checkpoint_interval=50)
     log.append("startup", "runtime")
     log.append("scan", "scanner", {"ok": True})
-    # Tamper with the second entry
     raw = json.loads(log_path.read_text(encoding="utf-8"))
     raw["entries"][1]["data"]["ok"] = False
     log_path.write_text(json.dumps(raw), encoding="utf-8")
@@ -279,13 +328,13 @@ def test_policy_ghost_forbids_network() -> None:
 def test_policy_hybrid_allows_network() -> None:
     policy = SovereignPolicy.for_mode(RuntimeMode.HYBRID)
     assert policy.network.allow_outbound
-    policy.enforce_network()  # must not raise
+    policy.enforce_network()
 
 
 def test_policy_online_allows_network() -> None:
     policy = SovereignPolicy.for_mode(RuntimeMode.ONLINE)
     assert policy.network.allow_outbound
-    policy.enforce_network()  # must not raise
+    policy.enforce_network()
 
 
 def test_policy_ghost_no_cloud() -> None:
@@ -316,9 +365,44 @@ def test_policy_load_from_file(tmp_path: Path) -> None:
 def test_policy_to_dict_no_secrets() -> None:
     policy = SovereignPolicy.for_mode(RuntimeMode.GHOST)
     d = policy.to_dict()
-    # Ensure no key material leaks through to dict
     assert "key" not in str(d).lower()
     assert d["mode"] == "ghost"
+
+
+def test_runtime_policy_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SOVEREIGN_MODE", "hybrid")
+    monkeypatch.setenv("SOVEREIGN_BASE_DIR", str(tmp_path / "runtime"))
+
+    policy = RuntimePolicy.from_env()
+
+    assert policy.mode == "hybrid"
+    assert policy.base_dir == tmp_path / "runtime"
+    assert policy.memory_path == tmp_path / "runtime" / "memory.json"
+    assert policy.state_path == tmp_path / "runtime" / "state.json.enc"
+    assert policy.backup_dir == tmp_path / "runtime" / "backups"
+    assert policy.backup_retention == 20
+    assert policy.scan_interval == 3.0
+    assert policy.replica_backup_dir == tmp_path / "runtime" / "replicas" / "hybrid"
+    assert policy.is_hybrid
+    assert not policy.is_ghost
+    assert not policy.is_online
+
+
+def test_runtime_policy_profiles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SOVEREIGN_BASE_DIR", str(tmp_path / "runtime"))
+
+    monkeypatch.setenv("SOVEREIGN_MODE", "ghost")
+    ghost_policy = RuntimePolicy.from_env()
+    assert ghost_policy.replica_backup_dir is None
+    assert ghost_policy.backup_retention == 10
+    assert ghost_policy.scan_interval == 5.0
+
+    monkeypatch.setenv("SOVEREIGN_MODE", "online")
+    online_policy = RuntimePolicy.from_env()
+    assert online_policy.replica_backup_dir == tmp_path / "runtime" / "replicas" / "online"
+    assert online_policy.is_online
+    assert not online_policy.is_ghost
+    assert not online_policy.is_hybrid
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +435,7 @@ def test_crypto_profile_unknown_raises() -> None:
 
 def test_hash_bytes_sha3_512() -> None:
     digest = hash_bytes(b"data", algo="sha3_512")
-    assert len(digest) == 128  # 512 bits -> 128 hex chars
+    assert len(digest) == 128
 
 
 def test_hash_bytes_sha256() -> None:
@@ -379,20 +463,20 @@ def test_orchestrator_ghost_mode(tmp_path: Path) -> None:
 def test_orchestrator_hybrid_mode(tmp_path: Path) -> None:
     orch = ModeOrchestrator(mode="hybrid", base_dir=tmp_path)
     assert orch.mode == RuntimeMode.HYBRID
-    orch.check_network_allowed()  # must not raise
+    orch.check_network_allowed()
 
 
 def test_orchestrator_online_mode(tmp_path: Path) -> None:
     orch = ModeOrchestrator(mode="online", base_dir=tmp_path)
     assert orch.mode == RuntimeMode.ONLINE
-    orch.check_network_allowed()  # must not raise
+    orch.check_network_allowed()
 
 
 def test_orchestrator_services_created(tmp_path: Path) -> None:
     orch = ModeOrchestrator(mode="ghost", base_dir=tmp_path)
     enc = orch.encryption()
     assert enc is not None
-    assert orch.encryption() is enc  # cached
+    assert orch.encryption() is enc
 
 
 def test_orchestrator_log_event(tmp_path: Path) -> None:
@@ -437,7 +521,6 @@ async def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setenv("SOVEREIGN_MODE", "ghost")
     base_dir = tmp_path / "sov"
 
-    # Patch the default base directory so state lands under tmp_path
     monkeypatch.setenv("SOVEREIGN_BASE_DIR", str(base_dir))
     base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -449,7 +532,6 @@ async def test_async_main_entrypoint_smoke(tmp_path: Path, monkeypatch: pytest.M
     with contextlib.suppress(asyncio.CancelledError):
         await task
 
-    # The runtime must have written an audit log entry for 'startup'
     audit_log_files = list(base_dir.glob("audit.log.json"))
     assert audit_log_files, "Expected audit log to be written during startup"
     raw = json.loads(audit_log_files[0].read_text(encoding="utf-8"))

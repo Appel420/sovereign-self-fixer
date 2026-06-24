@@ -1,26 +1,4 @@
-"""Encrypted, integrity-checked, policy-governed backup manager.
-
-Backup flow
------------
-1. Serialize source bytes.
-2. Encrypt with ``EncryptionManager`` (ChaCha20-Poly1305 by default).
-3. Compute SHA3-512 over both the plaintext and the ciphertext blob.
-4. Build a ``BackupManifest`` and sign it with the local Ed25519 key.
-5. Write ``<backup_id>.blob`` and ``<backup_id>.manifest``.
-6. Prune old backups according to the ``BackupPolicy.retention_count``.
-
-Restore flow
-------------
-1. Load and parse the manifest.
-2. If signing is enabled, verify the Ed25519 signature.
-3. Verify the blob hash against the stored ``blob_hash``.
-4. Decrypt the blob.
-5. Verify the decrypted bytes against the stored ``source_hash``.
-6. Return the verified plaintext bytes.
-
-Plaintext secrets must **never** be passed to ``create_backup()``
-directly — always encrypt the secret at the application layer first.
-"""
+"""Encrypted backup management for monitored source files."""
 
 from __future__ import annotations
 
@@ -40,21 +18,29 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from selffixerai.core.policy import BackupPolicy
 from selffixerai.security.encryption import EncryptionManager
 
+DEFAULT_BACKUP_DIR = Path.home() / ".local" / "share" / "sovereign-self-fixer" / "backups"
 
-@dataclass
+
+@dataclass(slots=True)
+class BackupEntry:
+    path: str
+    source: str
+    created_at: str
+
+
+@dataclass(slots=True)
 class BackupManifest:
     backup_id: str
     timestamp: str
-    source_hash: str   # SHA3-512 of plaintext bytes
-    blob_hash: str     # SHA3-512 of the encrypted blob
+    source_hash: str
+    blob_hash: str
     encryption_algo: str
     policy: dict[str, Any] = field(default_factory=dict)
     signature: str = ""
 
     def _signable_json(self) -> str:
-        """Return the canonical JSON string that the signature covers."""
-        d = {k: v for k, v in asdict(self).items() if k != "signature"}
-        return json.dumps(d, sort_keys=True, separators=(",", ":"))
+        payload = {k: v for k, v in asdict(self).items() if k != "signature"}
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
@@ -65,32 +51,22 @@ class BackupManifest:
 
 
 class BackupManager:
-    """Create, verify, and restore encrypted backups.
-
-    Parameters
-    ----------
-    backup_dir:
-        Directory that will hold ``.blob`` and ``.manifest`` files.
-    encryption:
-        ``EncryptionManager`` instance.  A new one is created if omitted.
-    policy:
-        ``BackupPolicy`` that controls encryption, signing, and retention.
-    key_path:
-        Path to the signing key.  Auto-generated if absent.
-    """
+    """Create encrypted backups and retain a bounded history."""
 
     def __init__(
         self,
-        backup_dir: Path,
+        backup_dir: str | Path | None = None,
+        retention: int = 10,
         encryption: EncryptionManager | None = None,
         policy: BackupPolicy | None = None,
         key_path: Path | None = None,
     ) -> None:
-        self.backup_dir = backup_dir
+        self.backup_dir = Path(backup_dir) if backup_dir else DEFAULT_BACKUP_DIR
         self.backup_dir.mkdir(parents=True, exist_ok=True)
-        self.encryption = encryption or EncryptionManager(key_path=backup_dir / "backup.key")
-        self.policy = policy or BackupPolicy()
-        self.key_path = key_path or backup_dir / "backup_sign.ed25519"
+        self.policy = policy or BackupPolicy(retention_count=retention)
+        self.retention = self.policy.retention_count if policy is not None else retention
+        self.encryption = encryption or EncryptionManager(key_path=key_path or self.backup_dir / "backup.key")
+        self.key_path = key_path or self.backup_dir / "backup_sign.ed25519"
         self._sign_key = self._load_or_create_sign_key()
 
     def _load_or_create_sign_key(self) -> Ed25519PrivateKey:
@@ -110,20 +86,49 @@ class BackupManager:
             pass
         return key
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def create_backup(self, source: bytes | str | Path, label: str = "backup") -> Path:
+        if isinstance(source, (bytes, bytearray)):
+            return self._create_manifest_backup(bytes(source), label=label)
+        return self._create_legacy_backup(Path(source))
 
-    def create_backup(self, source: bytes, label: str = "backup") -> Path:
-        """Encrypt and sign *source*, write blob + manifest, prune old backups.
+    def restore_backup(self, backup: str | Path, destination: str | Path | None = None) -> bytes | Path:
+        backup_path = Path(backup)
+        if not backup_path.exists():
+            raise FileNotFoundError(backup_path)
 
-        Returns the path to the newly written manifest file.
-        """
+        if backup_path.name.endswith(".manifest"):
+            source = self._restore_manifest_backup(backup_path)
+        elif backup_path.name.endswith(".bak.enc"):
+            source = self._restore_legacy_backup(backup_path)
+        else:
+            raise ValueError(f"Unsupported backup format: {backup_path}")
+
+        if destination is None:
+            return source
+
+        destination_path = Path(destination)
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        destination_path.write_bytes(source)
+        return destination_path
+
+    def latest_backup(self) -> Path | None:
+        backups = self.list_backups()
+        return backups[-1] if backups else None
+
+    def list_backups(self) -> list[Path]:
+        return sorted(
+            [
+                *self.backup_dir.glob("*.manifest"),
+                *self.backup_dir.glob("*.bak.enc"),
+            ],
+            key=lambda path: (path.stat().st_mtime, path.name),
+        )
+
+    def _create_manifest_backup(self, source: bytes, label: str) -> Path:
         backup_id = (
             f"{label}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{secrets.token_hex(4)}"
         )
         source_hash = hashlib.sha3_512(source).hexdigest()
-
         blob = self.encryption.encrypt_bytes(source) if self.policy.encrypt else source
         blob_hash = hashlib.sha3_512(blob).hexdigest()
 
@@ -145,20 +150,23 @@ class BackupManager:
 
         manifest_path = self.backup_dir / f"{backup_id}.manifest"
         manifest_path.write_text(manifest.to_json(), encoding="utf-8")
-
         self._prune()
         return manifest_path
 
-    def restore_backup(self, manifest_path: Path) -> bytes:
-        """Verify integrity and signature, then decrypt and return source bytes.
+    def _create_legacy_backup(self, source_path: Path) -> Path:
+        if not source_path.exists():
+            raise FileNotFoundError(source_path)
 
-        Raises
-        ------
-        InvalidSignature
-            If the manifest signature fails verification.
-        ValueError
-            If any hash check fails.
-        """
+        created_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup_path = self.backup_dir / f"{source_path.stem}.{created_at}.bak.enc"
+        payload = source_path.read_bytes()
+        if self.policy.encrypt:
+            payload = self.encryption.encrypt_bytes(payload)
+        backup_path.write_bytes(payload)
+        self._prune()
+        return backup_path
+
+    def _restore_manifest_backup(self, manifest_path: Path) -> bytes:
         manifest = BackupManifest.from_json(manifest_path.read_text(encoding="utf-8"))
 
         if self.policy.sign and manifest.signature:
@@ -168,39 +176,35 @@ class BackupManager:
 
         blob_path = self.backup_dir / f"{manifest.backup_id}.blob"
         blob = blob_path.read_bytes()
-
         actual_blob_hash = hashlib.sha3_512(blob).hexdigest()
         if actual_blob_hash != manifest.blob_hash:
             raise ValueError(f"Blob integrity check failed for backup: {manifest.backup_id}")
 
-        source = (
-            self.encryption.decrypt_bytes(blob)
-            if manifest.encryption_algo != "none"
-            else blob
-        )
-
+        source = self.encryption.decrypt_bytes(blob) if manifest.encryption_algo != "none" else blob
         actual_source_hash = hashlib.sha3_512(source).hexdigest()
         if actual_source_hash != manifest.source_hash:
             raise ValueError(
                 f"Source integrity check failed after decryption: {manifest.backup_id}"
             )
-
         return source
 
-    def list_backups(self) -> list[Path]:
-        """Return manifest paths sorted oldest-first."""
-        return sorted(self.backup_dir.glob("*.manifest"))
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    def _restore_legacy_backup(self, backup_path: Path) -> bytes:
+        payload = backup_path.read_bytes()
+        if self.policy.encrypt:
+            return self.encryption.decrypt_bytes(payload)
+        return payload
 
     def _prune(self) -> None:
-        manifests = self.list_backups()
-        keep = self.policy.retention_count
-        to_remove = manifests[:-keep] if len(manifests) > keep else []
-        for manifest_path in to_remove:
-            backup_id = manifest_path.stem
-            blob_path = self.backup_dir / f"{backup_id}.blob"
-            manifest_path.unlink(missing_ok=True)
-            blob_path.unlink(missing_ok=True)
+        if self.retention <= 0:
+            return
+        backups = self.list_backups()
+        excess = len(backups) - self.retention
+        for path in backups[: max(excess, 0)]:
+            self._remove_backup(path)
+
+    def _remove_backup(self, path: Path) -> None:
+        if path.name.endswith(".manifest"):
+            path.unlink(missing_ok=True)
+            (self.backup_dir / f"{path.stem}.blob").unlink(missing_ok=True)
+        else:
+            path.unlink(missing_ok=True)

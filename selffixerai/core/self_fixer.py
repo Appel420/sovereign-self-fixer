@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from selffixerai.analysis.deep_scanner import DeepScanner, Finding, ScanReport
+from selffixerai.core.backup_manager import BackupManager
 from selffixerai.memory.repmhl import REPMHL
 from selffixerai.notifications import Notifier
 from selffixerai.security.tamper_lock import TamperHardLock
@@ -30,17 +31,19 @@ class SelfFixer:
         scanner: DeepScanner,
         notifier: Notifier,
         memory: REPMHL | None = None,
+        backup_manager: BackupManager | None = None,
+        replica_backup_manager: BackupManager | None = None,
         target_path: str | Path | None = None,
         scan_interval: float = 5.0,
-        backup_manager: object | None = None,
     ) -> None:
         self.lock = lock
         self.scanner = scanner
         self.notifier = notifier
         self.memory = memory
+        self.backup_manager = backup_manager
+        self.replica_backup_manager = replica_backup_manager
         self.target_path = Path(target_path) if target_path else self.lock.code_file
         self.scan_interval = scan_interval
-        self.backup_manager = backup_manager
 
     async def run(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
@@ -51,42 +54,49 @@ class SelfFixer:
                 continue
 
     def scan_once(self) -> RepairReport:
-        if not self.target_path.exists():
-            report = RepairReport(path=str(self.target_path), scanned=False, changed=False)
-            self.notifier.send_notification("scan_skipped", {"path": report.path})
-            return report
-
-        scan = self.scanner.scan_file(self.target_path)
         changed = False
         notes: list[str] = []
+        scanned = True
 
-        if not scan.has_findings:
+        if not self.target_path.exists():
+            restored_notes, actual_change, should_scan = self._restore_missing_target()
+            notes.extend(restored_notes)
+            changed = actual_change
+            if not should_scan:
+                scanned = False
+
+        scan: ScanReport | None = self.scanner.scan_file(self.target_path) if scanned else None
+        findings = scan.findings if scan is not None else []
+
+        if scan is not None and not scan.has_findings:
             if self.backup_manager is not None:
-                self.backup_manager.create_backup(
-                    self.target_path.read_bytes(), label="pre_seal"
-                )
+                backup_path = self.backup_manager.create_backup(self.target_path)
+                notes.append(f"backup {backup_path.name}")
+            if self.replica_backup_manager is not None:
+                replica_path = self.replica_backup_manager.create_backup(self.target_path)
+                notes.append(f"replica {replica_path.name}")
             snapshot = self.lock.refresh()
             notes.append(f"sealed {snapshot.code_hash}")
-        else:
+        elif scan is not None:
             notes.extend(self._describe_findings(scan))
 
         self.notifier.send_notification(
             "scan_complete",
-            {"path": str(self.target_path), "findings": len(scan.findings), "changed": changed},
+            {"path": str(self.target_path), "findings": len(findings), "changed": changed},
         )
 
         if self.memory is not None:
             self.memory.add_turn(
                 "assistant",
-                f"scan_complete path={self.target_path} findings={len(scan.findings)} changed={changed}",
-                metadata={"findings": [asdict(finding) for finding in scan.findings]},
+                f"scan_complete path={self.target_path} findings={len(findings)} changed={changed}",
+                metadata={"findings": [asdict(finding) for finding in findings]},
             )
 
         return RepairReport(
             path=str(self.target_path),
-            scanned=True,
+            scanned=scanned,
             changed=changed,
-            findings=scan.findings,
+            findings=findings,
             notes=notes,
         )
 
@@ -98,3 +108,75 @@ class SelfFixer:
 
     def heal_text(self, text: str) -> str:
         return text if text.endswith("\n") else f"{text}\n"
+
+    def _restore_missing_target(self) -> tuple[list[str], bool, bool]:
+        notes: list[str] = []
+        latest_backup = self._latest_backup()
+        if latest_backup is not None:
+            try:
+                restored = self._restore_backup(latest_backup)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(f"backup not found: {latest_backup}") from exc
+            except Exception as exc:
+                raise RuntimeError(
+                    f"backup restoration failed for {self.target_path} from {latest_backup}: {exc}"
+                ) from exc
+            if not restored.exists():
+                raise RuntimeError(
+                    f"restore completed but target is missing: {self.target_path} from {latest_backup}"
+                )
+            notes.append(f"restored {restored.name} from {latest_backup.name}")
+            return notes, True, True
+
+        self.target_path.parent.mkdir(parents=True, exist_ok=True)
+        self.target_path.write_text("", encoding="utf-8")
+        notes.append(f"initialized {self.target_path.name} (no backups available)")
+        return notes, False, False
+
+    def _latest_backup(self) -> Path | None:
+        backups_with_mtime: list[tuple[float, Path]] = []
+        for backup_manager in (self.backup_manager, self.replica_backup_manager):
+            snapshot = self._backup_snapshot(backup_manager)
+            if snapshot is not None:
+                backups_with_mtime.append(snapshot)
+        if not backups_with_mtime:
+            return None
+        return max(backups_with_mtime, key=lambda item: item[0])[1]
+
+    def _restore_backup(self, backup: Path) -> Path:
+        if self._matches_backup_dir(backup, self.backup_manager):
+            return self._restore_with_manager(self.backup_manager, backup)
+        if self._matches_backup_dir(backup, self.replica_backup_manager):
+            return self._restore_with_manager(self.replica_backup_manager, backup)
+        raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
+
+    def _restore_with_manager(self, manager: BackupManager | None, backup: Path) -> Path:
+        if manager is None:
+            raise ValueError(f"backup path is not managed by a configured backup manager: {backup}")
+        restored = manager.restore_backup(backup, destination=self.target_path)
+        if isinstance(restored, Path):
+            return restored
+        self.target_path.parent.mkdir(parents=True, exist_ok=True)
+        self.target_path.write_bytes(restored)
+        return self.target_path
+
+    @staticmethod
+    def _backup_snapshot(backup_manager: BackupManager | None) -> tuple[float, Path] | None:
+        if backup_manager is None:
+            return None
+        backup = backup_manager.latest_backup()
+        if backup is None:
+            return None
+        try:
+            return backup.stat().st_mtime, backup
+        except FileNotFoundError:
+            return None
+
+    @staticmethod
+    def _matches_backup_dir(backup: Path, backup_manager: BackupManager | None) -> bool:
+        if backup_manager is None:
+            return False
+        try:
+            return backup.resolve().parent == backup_manager.backup_dir.resolve()
+        except FileNotFoundError:
+            return False
