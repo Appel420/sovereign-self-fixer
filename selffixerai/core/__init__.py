@@ -1,32 +1,17 @@
-"""Core orchestration helpers."""
+"""Core service graph for Sovereign Self-Fixer."""
 
-from .backup_manager import BackupEntry, BackupManager, BackupManifest
-from .immutable_log import Checkpoint, ImmutableLog, LogEntry
-from .orchestrator import ModeOrchestrator
-from .policy import (
-    BackupPolicy,
-    DEFAULT_BASE_DIR,
-    PolicyEngine,
-    RuntimeMode,
-    RuntimePolicy,
-    SovereignPolicy,
-)
-from .self_fixer import RepairReport, SelfFixer
+from selffixerai.core.authorization import AuthorizationGate
+from selffixerai.core.drift import DriftEnforcer
+from selffixerai.core.orchestrator import ModeOrchestrator
+from selffixerai.core.policy import PolicyEngine, RuntimeMode, SovereignPolicy
+from selffixerai.core.self_fixer import SelfFixer
 
 __all__ = [
-    "BackupEntry",
-    "BackupManager",
-    "BackupManifest",
-    "BackupPolicy",
-    "Checkpoint",
-    "DEFAULT_BASE_DIR",
-    "ImmutableLog",
-    "LogEntry",
+    "AuthorizationGate",
+    "DriftEnforcer",
     "ModeOrchestrator",
     "PolicyEngine",
-    "RepairReport",
     "RuntimeMode",
-    "RuntimePolicy",
     "SelfFixer",
     "SovereignPolicy",
 ]
