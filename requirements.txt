@@ -1,6 +1,7 @@
-cryptography
-blake3
-prometheus-client
-sentence-transformers
-faiss-cpu
-numpy
+cryptography>=45,<47
+blake3>=1,<2
+prometheus-client>=0.22,<1
+sentence-transformers>=3,<6
+faiss-cpu>=1.8,<2
+numpy>=1.26,<3
+liboqs-python==0.16.0
